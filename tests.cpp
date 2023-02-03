@@ -29,55 +29,55 @@ class FileState
 protected:
     static void ExecuteOperation(FileOperationTag operation, FileState *lastState, FileState *newState, Connection *connection)
     {
-        switch (operation)
+
+        if (operation == FileOperationTag::Update && lastState->tag == FileStateTag::Reading)
         {
-        case FileOperationTag::Update:
-            switch (lastState->tag)
-            {
-            case FileStateTag::Reading:
-                lastState->executingOperation.wait();
-                newState->writeFile(newState->name, connection);
-                break;
+            lastState->executingOperation.wait();
+            newState->writeFile(newState->name, connection);
+        }
+        else if (operation == FileOperationTag::Update && lastState->tag == FileStateTag::Updating)
+        {
+            lastState->requestStopUpdate();
+            lastState->executingOperation.wait();
+            newState->writeFile(newState->name, connection);
+        }
+        else if (operation == FileOperationTag::Update && lastState->tag == FileStateTag::Deleting)
+        {
+            lastState->executingOperation.wait();
+            newState->createFile(newState->name, connection);
+        }
 
-            case FileStateTag::Updating:
-                lastState->requestStopUpdate();
-                lastState->executingOperation.wait();
-                newState->writeFile(newState->name, connection);
-                break;
-            }
-            break;
+        if (operation == FileOperationTag::Read && lastState->tag == FileStateTag::Reading)
+        {
+            newState->readFile(newState->name, connection);
+            lastState->executingOperation.wait();
+        }
+        else if (operation == FileOperationTag::Read && lastState->tag == FileStateTag::Updating)
+        {
+            lastState->executingOperation.wait();
+            newState->readFile(newState->name, connection);
+        }
+        else if (operation == FileOperationTag::Read && lastState->tag == FileStateTag::Deleting)
+        {
+            // return not found
+            lastState->executingOperation.wait();
+        }
 
-        case FileOperationTag::Delete:
-            switch (lastState->tag)
-            {
-            case FileStateTag::Reading:
-                lastState->executingOperation.wait();
-                newState->deleteFile(newState->name, connection);
-                break;
-
-            case FileStateTag::Updating:
-                lastState->requestStopUpdate();
-                lastState->executingOperation.wait();
-                newState->deleteFile(newState->name, connection);
-                break;
-            }
-            break;
-
-        case FileOperationTag::Read:
-            switch (lastState->tag)
-            {
-            case FileStateTag::Reading:
-                newState->readFile(newState->name, connection);
-                lastState->executingOperation.wait();
-                break;
-
-            case FileStateTag::Updating:
-                lastState->requestStopUpdate();
-                lastState->executingOperation.wait();
-                newState->readFile(newState->name, connection);
-                break;
-            }
-            break;
+        if (operation == FileOperationTag::Delete && lastState->tag == FileStateTag::Reading)
+        {
+            lastState->executingOperation.wait();
+            newState->deleteFile(newState->name, connection);
+        }
+        else if (operation == FileOperationTag::Delete && lastState->tag == FileStateTag::Updating)
+        {
+            lastState->requestStopUpdate();
+            lastState->executingOperation.wait();
+            newState->deleteFile(newState->name, connection);
+        }
+        else if (operation == FileOperationTag::Delete && lastState->tag == FileStateTag::Deleting)
+        {
+            lastState->executingOperation.wait();
+            // close connection but dont delete file again
         }
     }
 
@@ -132,7 +132,14 @@ public:
         switch (operation)
         {
         case FileOperationTag::Read:
-            fs.tag = FileStateTag::Reading;
+            if (lastState->tag == FileStateTag::Deleting)
+            {
+                fs.tag = FileStateTag::Deleting;
+            }
+            else
+            {
+                fs.tag = FileStateTag::Reading;
+            }
             break;
         case FileOperationTag::Delete:
             fs.tag = FileStateTag::Deleting;
@@ -188,12 +195,85 @@ void test1()
 
     FileState state = FileState::Create(expectedFilename, &expectedConnection, createFile, fail, fail, fail);
     state.executingOperation.get();
+    assert(state.tag == FileStateTag::Updating, "expected updating tag");
     assert(hasExecuted, "writeFile not called");
+}
+
+void test2()
+{
+    Connection expectedConnection;
+    std::string expectedFilename = "FOOBAR";
+
+    bool hasCreateFileExecuted = false;
+    bool hasReadFileExecuted = false;
+
+    FileOperationFn createFile =
+        [&hasCreateFileExecuted, hasReadFileExecuted, expectedFilename, &expectedConnection](std::string _filename, Connection *_connection)
+    {
+        assert(expectedFilename == _filename, "Invalid filename");
+        assert(&expectedConnection == _connection, "Invalid connection");
+        assert(!hasReadFileExecuted, "Read file executed before create file");
+        hasCreateFileExecuted = true;
+    };
+
+    FileOperationFn readFile =
+        [&hasCreateFileExecuted, &hasReadFileExecuted, expectedFilename, &expectedConnection](std::string _filename, Connection *_connection)
+    {
+        assert(hasCreateFileExecuted, "Create file has not executed before read file");
+        assert(expectedFilename == _filename, "Invalid filename");
+        assert(&expectedConnection == _connection, "Invalid connection");
+        hasReadFileExecuted = true;
+    };
+
+    FileState initialState = FileState::Create(expectedFilename, &expectedConnection, createFile, readFile, fail, fail);
+    assert(initialState.tag == FileStateTag::Updating, "expected updating tag");
+
+    FileState nextState = initialState.Execute(FileOperationTag::Read, &initialState, &expectedConnection);
+    assert(nextState.tag == FileStateTag::Reading, "expected reading tag");
+
+    nextState.executingOperation.get();
+    assert(hasReadFileExecuted, "read file was not executed");
+}
+
+void test3()
+{
+    Connection expectedConnection;
+    std::string expectedFilename = "FOOBAR";
+
+    bool hasCreateFileExecuted = false;
+    bool hasWriteFileExecuted = false;
+
+    FileOperationFn createFile =
+        [&hasCreateFileExecuted, hasWriteFileExecuted, expectedFilename, &expectedConnection](std::string _filename, Connection *_connection)
+    {
+        assert(expectedFilename == _filename, "Invalid filename");
+        assert(&expectedConnection == _connection, "Invalid connection");
+        assert(!hasWriteFileExecuted, "Read file executed before create file");
+        hasCreateFileExecuted = true;
+    };
+
+    FileOperationFn writeFile =
+        [&hasCreateFileExecuted, &hasWriteFileExecuted, expectedFilename, &expectedConnection](std::string _filename, Connection *_connection)
+    {
+        assert(hasCreateFileExecuted, "Create file has not executed before read file");
+        assert(expectedFilename == _filename, "Invalid filename");
+        assert(&expectedConnection == _connection, "Invalid connection");
+        hasWriteFileExecuted = true;
+    };
+
+    FileState initialState = FileState::Create(expectedFilename, &expectedConnection, createFile, fail, writeFile, fail);
+    FileState nextState = initialState.Execute(FileOperationTag::Update, &initialState, &expectedConnection);
+
+    nextState.executingOperation.get();
+    assert(hasWriteFileExecuted, "write file was not executed");
 }
 
 int main()
 {
-    std::list<std::function<void()>> tests = {test1};
+    std::list<std::function<void()>> tests = {
+        test1,
+        test2,
+        test3};
 
     int i = 0;
     while (!tests.empty())
