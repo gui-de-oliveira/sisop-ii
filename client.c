@@ -3,21 +3,9 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/types.h>
-
-// windows
-#ifdef _WIN32
-#include <strings.h>
-#include <winsock2.h>
-#include <sys/types.h>
-#include <ws2tcpip.h>
-#endif
-
-// linux
-#ifdef linux
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#endif
 
 #define PORT 4000
 
