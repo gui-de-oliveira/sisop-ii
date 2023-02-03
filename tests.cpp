@@ -5,13 +5,14 @@
 
 enum FileStateTag
 {
-    Created,
     Reading,
-    Updating
+    Updating,
+    Deleting
 };
 
 enum FileOperationTag
 {
+    Create,
     Update,
     Read,
     Delete
@@ -21,15 +22,7 @@ class Connection
 {
 };
 
-void writeFile(char *path, Connection *connection){
-
-};
-
-void deleteFile(char *path, Connection *connection){
-
-};
-
-using FileOperationFn = std::function<void(char *, Connection *)>;
+using FileOperationFn = std::function<void(std::string, Connection *)>;
 
 class FileState
 {
@@ -41,10 +34,6 @@ protected:
         case FileOperationTag::Update:
             switch (lastState->tag)
             {
-            case FileStateTag::Created:
-                newState->writeFile(newState->name, connection);
-                break;
-
             case FileStateTag::Reading:
                 lastState->executingOperation.wait();
                 newState->writeFile(newState->name, connection);
@@ -61,10 +50,6 @@ protected:
         case FileOperationTag::Delete:
             switch (lastState->tag)
             {
-            case FileStateTag::Created:
-                newState->deleteFile(newState->name, connection);
-                break;
-
             case FileStateTag::Reading:
                 lastState->executingOperation.wait();
                 newState->deleteFile(newState->name, connection);
@@ -81,10 +66,6 @@ protected:
         case FileOperationTag::Read:
             switch (lastState->tag)
             {
-            case FileStateTag::Created:
-                newState->readFile(newState->name, connection);
-                break;
-
             case FileStateTag::Reading:
                 newState->readFile(newState->name, connection);
                 lastState->executingOperation.wait();
@@ -101,42 +82,73 @@ protected:
     }
 
 public:
-    char *name;
+    std::string name;
     FileStateTag tag;
     std::future<void> executingOperation;
 
-    FileOperationFn readFile;
+    FileOperationFn createFile;
     FileOperationFn writeFile;
+    FileOperationFn readFile;
     FileOperationFn deleteFile;
 
-    FileState(FileOperationFn &_readFile, FileOperationFn &_writeFile, FileOperationFn &_deleteFile)
-    {
-        readFile = _readFile;
-        writeFile = _writeFile;
-        deleteFile = _deleteFile;
-    }
+    FileState(){};
 
-    FileState(FileState *lastState)
+    static FileState Create(
+        std::string _name,
+        Connection *connection,
+        FileOperationFn &_createFile,
+        FileOperationFn &_readFile,
+        FileOperationFn &_writeFile,
+        FileOperationFn &_deleteFile)
     {
-        readFile = lastState->readFile;
-    }
+        FileState fs;
 
-    static FileState Update(FileState *lastState, Connection *connection)
-    {
-        FileState fs(lastState);
-        fs.name = lastState->name;
+        fs.name = _name;
         fs.tag = FileStateTag::Updating;
-        fs.executingOperation = std::async(ExecuteOperation, FileOperationTag::Update, lastState, &fs, connection);
+        fs.createFile = _createFile;
+        fs.writeFile = _writeFile;
+        fs.readFile = _readFile;
+        fs.deleteFile = _deleteFile;
+
+        fs.executingOperation = std::async(fs.createFile, fs.name, connection);
 
         return fs;
     }
 
-    static FileState Read(FileState *lastState, Connection *connection)
+    FileState(FileState *lastState)
+    {
+        name = lastState->name;
+
+        createFile = lastState->createFile;
+        readFile = lastState->readFile;
+        writeFile = lastState->writeFile;
+        deleteFile = lastState->deleteFile;
+    }
+
+    static FileState Execute(FileOperationTag operation, FileState *lastState, Connection *connection)
     {
         FileState fs(lastState);
-        fs.name = lastState->name;
-        fs.tag = FileStateTag::Reading;
-        fs.executingOperation = std::async(ExecuteOperation, FileOperationTag::Read, lastState, &fs, connection);
+
+        switch (operation)
+        {
+        case FileOperationTag::Read:
+            fs.tag = FileStateTag::Reading;
+            break;
+        case FileOperationTag::Delete:
+            fs.tag = FileStateTag::Deleting;
+            break;
+        case FileOperationTag::Create:
+        case FileOperationTag::Update:
+            fs.tag = FileStateTag::Updating;
+            break;
+        }
+
+        fs.executingOperation = std::async(
+            ExecuteOperation,
+            operation,
+            lastState,
+            &fs,
+            connection);
 
         return fs;
     }
@@ -146,7 +158,7 @@ public:
     }
 };
 
-FileOperationFn fail = [](char *file, Connection *connection)
+FileOperationFn fail = [](std::string file, Connection *connection)
 {
     throw std::runtime_error("FAIL CALLED");
 };
@@ -161,21 +173,22 @@ void assert(bool expression, std::string message)
 
 void test1()
 {
-    Connection connection;
+    Connection expectedConnection;
+    std::string expectedFilename = "FOOBAR";
 
-    bool hasRead = false;
+    bool hasExecuted = false;
 
-    FileOperationFn readFile =
-        [&hasRead](char *a, Connection *b)
-    { hasRead = true; };
+    FileOperationFn createFile =
+        [&hasExecuted, expectedFilename, &expectedConnection](std::string _filename, Connection *_connection)
+    {
+        assert(expectedFilename == _filename, "Invalid filename");
+        assert(&expectedConnection == _connection, "Invalid connection");
+        hasExecuted = true;
+    };
 
-    FileState initialState(readFile, fail, fail);
-    initialState.tag = FileStateTag::Created;
-
-    FileState nextState = FileState::Read(&initialState, &connection);
-
-    nextState.executingOperation.get();
-    assert(hasRead, "readFile not called");
+    FileState state = FileState::Create(expectedFilename, &expectedConnection, createFile, fail, fail, fail);
+    state.executingOperation.get();
+    assert(hasExecuted, "writeFile not called");
 }
 
 int main()
