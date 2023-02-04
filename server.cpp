@@ -14,22 +14,16 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <fstream>
-using namespace std;
-// Server side
-int main(int argc, char *argv[])
-{
-    // for the server, we only need to specify a port number
-    if (argc != 2)
-    {
-        cerr << "Usage: port" << endl;
-        exit(0);
-    }
-    // grab the port number
-    int port = atoi(argv[1]);
-    // buffer to send and receive messages with
-    char msg[1500];
+#include <functional>
+#include <future>
+#include <unistd.h>
+#include <cstdlib>
+#include <list>
 
-    // setup a socket and connection tools
+using namespace std;
+
+int startServer(int port)
+{
     sockaddr_in servAddr;
     bzero((char *)&servAddr, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
@@ -44,69 +38,106 @@ int main(int argc, char *argv[])
         cerr << "Error establishing the server socket" << endl;
         exit(0);
     }
+
     // bind the socket to its local address
-    int bindStatus = bind(serverSd, (struct sockaddr *)&servAddr,
-                          sizeof(servAddr));
+    int bindStatus = bind(
+        serverSd,
+        (struct sockaddr *)&servAddr,
+        sizeof(servAddr));
+
     if (bindStatus < 0)
     {
         cerr << "Error binding socket to local address" << endl;
         exit(0);
     }
-    cout << "Waiting for a client to connect..." << endl;
-    // listen for up to 5 requests at a time
-    listen(serverSd, 5);
-    // receive a request from client using accept
-    // we need a new address to connect with the client
-    sockaddr_in newSockAddr;
-    socklen_t newSockAddrSize = sizeof(newSockAddr);
-    // accept, create a new socket descriptor to
-    // handle the new connection with client
-    int newSd = accept(serverSd, (sockaddr *)&newSockAddr, &newSockAddrSize);
-    if (newSd < 0)
+
+    return serverSd;
+}
+
+void onConnection(int serverSd, function<void(int, int)> onConnect)
+{
+    list<future<void> *> a;
+
+    while (true)
     {
-        cerr << "Error accepting request from client!" << endl;
-        exit(1);
+        cout << "Waiting for a client to connect..." << endl;
+        int maxNumberOfConnections = 99;
+        int result = listen(serverSd, maxNumberOfConnections);
+
+        if (result == -1)
+        {
+            cerr << "Error listening to socket" << endl;
+            exit(0);
+        }
+
+        // receive a request from client using accept
+        // we need a new address to connect with the client
+        sockaddr_in newSockAddr;
+        socklen_t newSockAddrSize = sizeof(newSockAddr);
+
+        // accept, create a new socket descriptor to
+        // handle the new connection with client
+        int connectionSd = accept(serverSd, (sockaddr *)&newSockAddr, &newSockAddrSize);
+        if (connectionSd < 0)
+        {
+            cerr << "Error accepting request from client!" << endl;
+            exit(1);
+        }
+        future<void> *connectionExecution = (future<void> *)malloc(sizeof(future<void>));
+        *connectionExecution = async(launch::async, onConnect, serverSd, connectionSd);
+        a.push_back(connectionExecution);
     }
-    cout << "Connected with client!" << endl;
-    // lets keep track of the session time
-    struct timeval start1, end1;
-    gettimeofday(&start1, NULL);
-    // also keep track of the amount of data sent as well
-    int bytesRead, bytesWritten = 0;
-    while (1)
+}
+
+int clientCounter = 0;
+void onConnect(int serverSd, int connectionSd)
+{
+    int clientId = clientCounter++;
+    cout << "Connected with client " << clientId << endl;
+
+    char buffer[1500];
+
+    while (true)
     {
-        // receive a message from the client (listen)
-        cout << "Awaiting client response..." << endl;
-        memset(&msg, 0, sizeof(msg)); // clear the buffer
-        bytesRead += recv(newSd, (char *)&msg, sizeof(msg), 0);
-        if (!strcmp(msg, "exit"))
+        memset(&buffer, 0, sizeof(buffer));
+
+        recv(connectionSd, (char *)&buffer, sizeof(buffer), 0);
+
+        if (!strcmp(buffer, "exit"))
         {
-            cout << "Client has quit the session" << endl;
-            break;
+            cout << "Client " << clientId << " has quit the session" << endl;
+            close(connectionSd);
+            return;
         }
-        cout << "Client: " << msg << endl;
-        cout << ">";
-        string data;
-        getline(cin, data);
-        memset(&msg, 0, sizeof(msg)); // clear the buffer
-        strcpy(msg, data.c_str());
-        if (data == "exit")
-        {
-            // send to the client that server has closed the connection
-            send(newSd, (char *)&msg, strlen(msg), 0);
-            break;
-        }
-        // send the message to client
-        bytesWritten += send(newSd, (char *)&msg, strlen(msg), 0);
+
+        cout << "Client " << clientId << ": " << buffer << endl;
+
+        string data = "PING";
+
+        memset(&buffer, 0, sizeof(buffer));
+        strcpy(buffer, data.c_str());
+
+        sleep(1);
+        send(connectionSd, (char *)&buffer, strlen(buffer), 0);
     }
-    // we need to close the socket descriptors after we're all done
-    gettimeofday(&end1, NULL);
-    close(newSd);
-    close(serverSd);
-    cout << "********Session********" << endl;
-    cout << "Bytes written: " << bytesWritten << " Bytes read: " << bytesRead << endl;
-    cout << "Elapsed time: " << (end1.tv_sec - start1.tv_sec)
-         << " secs" << endl;
+
+    close(connectionSd);
+
     cout << "Connection closed..." << endl;
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2)
+    {
+        cerr << "Usage: ./server [port number]" << endl;
+        exit(0);
+    }
+
+    int port = atoi(argv[1]);
+
+    int serverSd = startServer(port);
+    onConnection(serverSd, onConnect);
+
     return 0;
 }
