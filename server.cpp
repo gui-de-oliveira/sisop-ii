@@ -18,9 +18,11 @@
 #include <future>
 #include <unistd.h>
 #include <cstdlib>
+#include <sstream>
 #include <list>
 
 using namespace std;
+#define MAX_BUFFER_SIZE 1500
 
 int startServer(int port)
 {
@@ -30,18 +32,15 @@ int startServer(int port)
     servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servAddr.sin_port = htons(port);
 
-    // open stream oriented socket with internet address
-    // also keep track of the socket descriptor
-    int serverSd = socket(AF_INET, SOCK_STREAM, 0);
-    if (serverSd < 0)
+    int serverConnection = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverConnection < 0)
     {
         cerr << "Error establishing the server socket" << endl;
         exit(0);
     }
 
-    // bind the socket to its local address
     int bindStatus = bind(
-        serverSd,
+        serverConnection,
         (struct sockaddr *)&servAddr,
         sizeof(servAddr));
 
@@ -51,93 +50,129 @@ int startServer(int port)
         exit(0);
     }
 
-    return serverSd;
+    cout << "Server started!" << endl;
+
+    return serverConnection;
 }
 
-void onConnection(int serverSd, function<void(int, int)> onConnect)
+int awaitConnection(int serverSocketDescriptor)
 {
-    list<future<void> *> a;
+    int maxNumberOfConnections = 99;
+    int result = listen(serverSocketDescriptor, maxNumberOfConnections);
 
-    while (true)
+    if (result == -1)
     {
-        cout << "Waiting for a client to connect..." << endl;
-        int maxNumberOfConnections = 99;
-        int result = listen(serverSd, maxNumberOfConnections);
-
-        if (result == -1)
-        {
-            cerr << "Error listening to socket" << endl;
-            exit(0);
-        }
-
-        // receive a request from client using accept
-        // we need a new address to connect with the client
-        sockaddr_in newSockAddr;
-        socklen_t newSockAddrSize = sizeof(newSockAddr);
-
-        // accept, create a new socket descriptor to
-        // handle the new connection with client
-        int connectionSd = accept(serverSd, (sockaddr *)&newSockAddr, &newSockAddrSize);
-        if (connectionSd < 0)
-        {
-            cerr << "Error accepting request from client!" << endl;
-            exit(1);
-        }
-        future<void> *connectionExecution = (future<void> *)malloc(sizeof(future<void>));
-        *connectionExecution = async(launch::async, onConnect, serverSd, connectionSd);
-        a.push_back(connectionExecution);
+        cerr << "Error listening to socket" << endl;
+        exit(0);
     }
+
+    sockaddr_in newSockAddr;
+    socklen_t newSockAddrSize = sizeof(newSockAddr);
+
+    int clientSocketDescriptor = accept(serverSocketDescriptor, (sockaddr *)&newSockAddr, &newSockAddrSize);
+    if (clientSocketDescriptor < 0)
+    {
+        cerr << "Error accepting request from client!" << endl;
+        exit(1);
+    }
+
+    return clientSocketDescriptor;
+}
+
+void clearBuffer(char (*buffer)[MAX_BUFFER_SIZE])
+{
+    memset(buffer, 0, sizeof(*buffer));
+}
+
+bool awaitMessage(char (*buffer)[MAX_BUFFER_SIZE], int socketDescriptor)
+{
+    clearBuffer(buffer);
+    int bytesRead = recv(socketDescriptor, (char *)buffer, sizeof(*buffer), 0);
+
+    bool errorOnRead = bytesRead == -1;
+    bool isResponseEmpty = bytesRead == 0;
+    if (errorOnRead || isResponseEmpty)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+void sendMessage(int socket, string message)
+{
+    char buffer[MAX_BUFFER_SIZE];
+    clearBuffer(&buffer);
+    strcpy(buffer, message.c_str());
+    send(socket, (char *)&buffer, strlen(buffer), 0);
+    clearBuffer(&buffer);
 }
 
 int clientCounter = 0;
-void onConnect(int serverSd, int connectionSd)
+void onConnect(int socket)
 {
     int clientId = clientCounter++;
-    cout << "Connected with client " << clientId << endl;
+    cout << "New client connected. Id: " << clientId << endl;
 
-    char buffer[1500];
+    char buffer[MAX_BUFFER_SIZE];
+    bool closeConnection = awaitMessage(&buffer, socket);
+
+    if (closeConnection)
+    {
+        close(socket);
+        cout << "Login failed for Client id " << clientId << endl;
+    };
+
+    char username[MAX_BUFFER_SIZE];
+    strcpy(username, buffer);
+
+    cout << "Client " << clientId << " logged in as " << username << endl;
+
+    ostringstream clientNameStream;
+    clientNameStream << "[Client " << clientId << " - " << username << "]";
+    string clientName = clientNameStream.str();
 
     while (true)
     {
-        memset(&buffer, 0, sizeof(buffer));
+        bool closeConnection = awaitMessage(&buffer, socket);
 
-        recv(connectionSd, (char *)&buffer, sizeof(buffer), 0);
-
-        if (!strcmp(buffer, "exit"))
+        if (closeConnection)
         {
-            cout << "Client " << clientId << " has quit the session" << endl;
-            close(connectionSd);
-            return;
+            cout << clientName << " ended connection" << endl;
+            break;
         }
 
-        cout << "Client " << clientId << ": " << buffer << endl;
-
-        string data = "PING";
-
-        memset(&buffer, 0, sizeof(buffer));
-        strcpy(buffer, data.c_str());
-
-        sleep(1);
-        send(connectionSd, (char *)&buffer, strlen(buffer), 0);
+        cout << clientName << ": " << buffer << endl;
+        sendMessage(socket, "OK!");
     }
 
-    close(connectionSd);
-
-    cout << "Connection closed..." << endl;
+    close(socket);
+    cout << "Connection with " << clientName << " closed" << endl;
 }
 
 int main(int argc, char *argv[])
 {
     if (argc != 2)
     {
-        cerr << "Usage: ./server [port number]" << endl;
-        exit(0);
+        cerr << "Expected usage: ./server <port-number>" << endl;
+        exit(-1);
     }
 
     int port = atoi(argv[1]);
 
-    int serverSd = startServer(port);
-    onConnection(serverSd, onConnect);
+    int serverSocketDescriptor = startServer(port);
+
+    list<future<void> *> runningExecutions;
+    while (true)
+    {
+        int clientSocketDescriptor = awaitConnection(serverSocketDescriptor);
+
+        future<void> *connectionExecution = (future<void> *)malloc(sizeof(future<void>));
+
+        *connectionExecution = async(launch::async, onConnect, clientSocketDescriptor);
+
+        runningExecutions.push_back(connectionExecution);
+    }
 
     return 0;
 }
