@@ -2,8 +2,10 @@
 #include <list>
 #include <future>
 #include <unistd.h>
+#include <fstream>
 #include <sstream>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "socket.h"
 
@@ -53,8 +55,9 @@ void onConnect(int socket)
         std::cout << "Login failed for Client id " << clientId << std::endl;
     };
 
-    char username[MAX_BUFFER_SIZE];
-    strcpy(username, buffer);
+    string username = buffer;
+    string folder = "out/" + username + "/";
+    mkdir(folder.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
     std::cout << "Client " << clientId << " logged in as " << username << std::endl;
 
@@ -79,6 +82,9 @@ void onConnect(int socket)
         {
             std::cout << "Upload command from " << clientName << std::endl;
 
+            std::fstream file;
+            file.open(folder + message.filename, ios::out);
+
             while (true)
             {
                 bool closeConnection = awaitMessage(&buffer, socket);
@@ -91,19 +97,20 @@ void onConnect(int socket)
 
                 if (message.type == MessageType::DataMessage)
                 {
-                    std::cout << "Upload package received from " << clientName << std::endl;
-                    std::cout << clientName << ": " << buffer << std::endl;
+                    std::cout << "Data from " << clientName << ": " << message.data << std::endl;
+                    file << message.data;
                     continue;
                 }
 
                 if (message.type == MessageType::EndCommand)
                 {
-                    std::cout << "End upload received from " << clientName << std::endl;
+                    std::cout << "End from " << clientName << std::endl;
                     break;
                 }
 
                 std::cout << "Unhandled message from " << clientName << ": " << buffer << std::endl;
             }
+            file.close();
             continue;
         }
 

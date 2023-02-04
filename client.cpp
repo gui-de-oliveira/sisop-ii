@@ -8,6 +8,12 @@
 
 using namespace std;
 
+std::string extractFilenameFromPath(std::string path)
+{
+    int lastDirectory = path.rfind("/");
+    return path.substr(lastDirectory + 1);
+}
+
 int main(int argc, char *argv[])
 {
     // Um cliente deve poder estabelecer uma sessão com o servidor via linha de comando utilizando:
@@ -94,14 +100,15 @@ int main(int argc, char *argv[])
                 continue;
             }
 
-            Message::UploadCommand("foobar.txt").send(socket);
+            string filename = extractFilenameFromPath(path);
+            Message::UploadCommand(filename).send(socket);
             awaitOk();
 
             string line;
             std::cout << "Sending file...";
             while (getline(file, line))
             {
-                Message::DataMessage(line).send(socket);
+                Message::DataMessage(line + "\n").send(socket);
                 awaitOk();
             }
             std::cout << "OK!" << std::endl;
