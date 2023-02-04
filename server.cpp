@@ -42,7 +42,7 @@ int clientCounter = 0;
 void onConnect(int socket)
 {
     int clientId = clientCounter++;
-    std::cout << "New client connected. Id: " << clientId << std::endl;
+    std::cout << Color::blue << "New client connected. Id: " << clientId << Color::reset << std::endl;
 
     char buffer[MAX_BUFFER_SIZE];
     bool closeConnection = awaitMessage(&buffer, socket);
@@ -59,12 +59,13 @@ void onConnect(int socket)
     std::cout << "Client " << clientId << " logged in as " << username << std::endl;
 
     std::ostringstream clientNameStream;
-    clientNameStream << "[Client " << clientId << " - " << username << "]";
+    clientNameStream << Color::yellow << "[" << clientId << "]" << Color::reset;
     std::string clientName = clientNameStream.str();
 
     while (true)
     {
         bool closeConnection = awaitMessage(&buffer, socket);
+        Message::Ok().send(socket);
 
         if (closeConnection)
         {
@@ -72,8 +73,41 @@ void onConnect(int socket)
             break;
         }
 
-        std::cout << clientName << ": " << buffer << std::endl;
-        sendMessage(socket, "OK!");
+        Message message = Message::Parse(buffer);
+
+        if (message.type == MessageType::UploadCommand)
+        {
+            std::cout << "Upload command from " << clientName << std::endl;
+
+            while (true)
+            {
+                bool closeConnection = awaitMessage(&buffer, socket);
+                Message::Ok().send(socket);
+
+                if (closeConnection)
+                    break;
+
+                Message message = Message::Parse(buffer);
+
+                if (message.type == MessageType::DataMessage)
+                {
+                    std::cout << "Upload package received from " << clientName << std::endl;
+                    std::cout << clientName << ": " << buffer << std::endl;
+                    continue;
+                }
+
+                if (message.type == MessageType::EndCommand)
+                {
+                    std::cout << "End upload received from " << clientName << std::endl;
+                    break;
+                }
+
+                std::cout << "Unhandled message from " << clientName << ": " << buffer << std::endl;
+            }
+            continue;
+        }
+
+        std::cout << "Unhandled message from " << clientName << ": " << buffer << std::endl;
     }
 
     close(socket);

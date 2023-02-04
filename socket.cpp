@@ -17,6 +17,12 @@
 #include <fstream>
 #include <sstream>
 
+std::string Color::red = "\033[31m";
+std::string Color::green = "\033[32m";
+std::string Color::yellow = "\033[33m";
+std::string Color::blue = "\033[34m";
+std::string Color::reset = "\033[0m";
+
 void clearBuffer(char (*buffer)[MAX_BUFFER_SIZE])
 {
     memset(buffer, 0, sizeof(*buffer));
