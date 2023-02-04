@@ -1,86 +1,8 @@
 #include <iostream>
-#include <string>
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <stdlib.h>
 #include <unistd.h>
-#include <string.h>
-#include <netdb.h>
-#include <sys/uio.h>
-#include <sys/time.h>
-#include <sys/wait.h>
-#include <fcntl.h>
-#include <fstream>
+#include "socket.h"
 
 using namespace std;
-#define MAX_BUFFER_SIZE 1500
-
-int connectToServer(char *serverIpAddress, int port)
-{
-    sockaddr_in sendSockAddr;
-    bzero((char *)&sendSockAddr, sizeof(sendSockAddr));
-
-    sendSockAddr.sin_family = AF_INET;
-    sendSockAddr.sin_port = htons(port);
-
-    struct hostent *host = gethostbyname(serverIpAddress);
-    sendSockAddr.sin_addr.s_addr =
-        inet_addr(inet_ntoa(*(struct in_addr *)*host->h_addr_list));
-
-    int connection = socket(AF_INET, SOCK_STREAM, 0);
-
-    int status = connect(
-        connection,
-        (sockaddr *)&sendSockAddr,
-        sizeof(sendSockAddr));
-
-    if (status < 0)
-    {
-        cout << "Error connecting to server!" << endl;
-        exit(-1);
-    }
-
-    return connection;
-}
-
-void clearBuffer(char (*buffer)[MAX_BUFFER_SIZE])
-{
-    memset(buffer, 0, sizeof(*buffer));
-}
-
-bool awaitMessage(char (*buffer)[MAX_BUFFER_SIZE], int socketDescriptor)
-{
-    clearBuffer(buffer);
-    int bytesRead = recv(socketDescriptor, (char *)buffer, sizeof(*buffer), 0);
-
-    bool errorOnRead = bytesRead == -1;
-    bool isResponseEmpty = bytesRead == 0;
-    if (errorOnRead || isResponseEmpty)
-    {
-        return true;
-    }
-
-    return false;
-}
-
-void sendMessage(int socket, string message)
-{
-    char buffer[MAX_BUFFER_SIZE];
-    clearBuffer(&buffer);
-    strcpy(buffer, message.c_str());
-    send(socket, (char *)&buffer, strlen(buffer), 0);
-    clearBuffer(&buffer);
-}
-
-void sendCustomMessage(int socket)
-{
-    string data;
-    getline(cin, data);
-    sendMessage(socket, data);
-}
 
 int main(int argc, char *argv[])
 {
