@@ -219,6 +219,28 @@ void downloadFile(Session session, string filename, Piper *piper)
     piper->start(session);
     return;
 }
+
+void sendFile(Session session, string filename, Piper *piper)
+{
+    std::fstream file;
+    string filePath = "out/" + session.username + "/" + filename;
+    file.open(filePath, ios::in);
+
+    string line;
+    std::cout << "Sending file...";
+    while (getline(file, line))
+    {
+        Message::DataMessage(line + "\n").send(session.socket);
+        awaitOk(session.socket);
+    }
+    std::cout << "OK!" << std::endl;
+    Message::EndCommand().send(session.socket);
+
+    file.close();
+    piper->start(session);
+    return;
+}
+
 future<void> *allocateFunction()
 {
     return (future<void> *)malloc(sizeof(future<void>));
@@ -226,6 +248,7 @@ future<void> *allocateFunction()
 
 FileState getNextState(FileState lastFileState, FileAction fileAction, Piper *piper)
 {
+
     FileState nextState;
 
     if (lastFileState.tag == FileStateTag::Empty && fileAction.type == FileActionType::Upload)
@@ -240,6 +263,7 @@ FileState getNextState(FileState lastFileState, FileAction fileAction, Piper *pi
             launch::async,
             [fileAction, piper]
             {
+                Message::Ok().send(fileAction.session.socket);
                 downloadFile(fileAction.session, fileAction.filename, piper);
             });
 
@@ -257,11 +281,48 @@ FileState getNextState(FileState lastFileState, FileAction fileAction, Piper *pi
             [fileAction, piper, lastFileState]
             {
                 (lastFileState.executingOperation)->wait();
+                Message::Ok().send(fileAction.session.socket);
                 downloadFile(fileAction.session, fileAction.filename, piper);
             });
 
         return nextState;
     }
+
+    else if (fileAction.type == FileActionType::Read)
+    {
+
+        nextState.tag = FileStateTag::Reading;
+        nextState.acessed = fileAction.timestamp;
+
+        nextState.executingOperation = allocateFunction();
+
+        *(nextState.executingOperation) = async(
+            launch::async,
+            [fileAction, piper, lastFileState]
+            {
+                Message::Ok().send(fileAction.session.socket);
+                awaitOk(fileAction.session.socket);
+
+                if (lastFileState.tag == FileStateTag::Empty)
+                {
+                    Message::EndCommand().send(fileAction.session.socket);
+                }
+                else if (lastFileState.tag == FileStateTag::Reading)
+                {
+                    sendFile(fileAction.session, fileAction.filename, piper);
+                    (lastFileState.executingOperation)->wait();
+                }
+                else
+                {
+                    (lastFileState.executingOperation)->wait();
+                    sendFile(fileAction.session, fileAction.filename, piper);
+                }
+            });
+
+        return nextState;
+    }
+
+    throw exception();
 }
 
 void processQueue(ThreadSafeQueue<FileAction> *queue, Piper *piper)
@@ -269,7 +330,6 @@ void processQueue(ThreadSafeQueue<FileAction> *queue, Piper *piper)
     while (true)
     {
         FileAction fileAction = queue->pop();
-        Message::Ok().send(fileAction.session.socket);
 
         string username = fileAction.session.username;
 
@@ -349,6 +409,12 @@ void onConnect(Session session, ThreadSafeQueue<FileAction> *queue)
         if (message.type == MessageType::UploadCommand)
         {
             queue->queue(FileAction(session, message.filename, FileActionType::Upload, message.timestamp));
+            return;
+        }
+
+        if (message.type == MessageType::DownloadCommand)
+        {
+            queue->queue(FileAction(session, message.filename, FileActionType::Read, message.timestamp));
             return;
         }
 

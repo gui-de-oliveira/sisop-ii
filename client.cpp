@@ -123,6 +123,69 @@ int main(int argc, char *argv[])
             continue;
         }
 
+        // # download <filename.ext> Faz uma cópia não sincronizada do arquivo filename.ext do servidor para
+        // o diretório local (de onde o servidor foi chamado). e.g. download
+        // mySpreadsheet.xlsx
+
+        string downloadCommand = "download";
+        bool isDownloadCommand = strcmp(downloadCommand.c_str(), command.c_str()) == 0;
+        if (isDownloadCommand)
+        {
+            string filename = input.substr(downloadCommand.length() + 1);
+
+            if (filename.length() <= 0)
+            {
+                cout << Color::red
+                     << "Missing filename arg on download command.\n"
+                     << "Expected usage: download <filename.ext>"
+                     << Color::reset
+                     << endl;
+                continue;
+            }
+
+            fstream file;
+            file.open(filename, ios::out);
+
+            if (!file)
+            {
+                cout << Color::red
+                     << "Couldn't open file on path \""
+                     << filename
+                     << "\""
+                     << Color::reset
+                     << endl;
+                file.close();
+                continue;
+            }
+
+            Message::DownloadCommand(filename).send(socket);
+            awaitOk();
+
+            Message::Ok().send(socket);
+
+            while (true)
+            {
+                Message message = readMessage(socket);
+
+                if (message.type == MessageType::DataMessage)
+                {
+                    file << message.data;
+                    std::cout << "Received data" << endl;
+                    continue;
+                }
+
+                if (message.type == MessageType::EndCommand)
+                {
+                    break;
+                }
+
+                std::cout << "Unhandled message " << message.type << endl;
+            }
+
+            file.close();
+            continue;
+        }
+
         cout << Color::red << "Invalid \"" << command << "\" command." << Color::reset << endl;
     }
 

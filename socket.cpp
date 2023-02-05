@@ -59,6 +59,20 @@ void sendCustomMessage(int socket)
     sendMessage(socket, data);
 }
 
+Message readMessage(int socket)
+{
+    char buffer[MAX_BUFFER_SIZE];
+    awaitMessage(&buffer, socket);
+    Message::Ok().send(socket);
+    return Message::Parse(buffer);
+}
+
+void awaitOk(int socket)
+{
+    char buffer[MAX_BUFFER_SIZE];
+    awaitMessage(&buffer, socket);
+}
+
 // = CLIENT METHODS ========================================================================
 
 int connectToServer(char *address, int port)

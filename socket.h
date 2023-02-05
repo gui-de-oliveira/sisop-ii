@@ -31,6 +31,7 @@ enum MessageType
 {
     InvalidMessage,
     UploadCommand,
+    DownloadCommand,
     DataMessage,
     EndCommand,
     Ok
@@ -88,6 +89,14 @@ public:
         return message;
     }
 
+    static Message DownloadCommand(std::string filename)
+    {
+        Message message;
+        message.type = MessageType::DownloadCommand;
+        message.filename = filename;
+        return message;
+    }
+
     static Message Parse(char *_buffer)
     {
         Message message;
@@ -119,6 +128,16 @@ public:
 
             return Message::UploadCommand(data);
 
+        case MessageType::DownloadCommand:
+            if (data.length() <= 0)
+            {
+                return Message::InvalidMessage();
+            }
+
+            // TODO: Check for invalid characters on filename
+
+            return Message::DownloadCommand(data);
+
         default:
             std::cout << "Couldn't parse message: " << buffer << std::endl;
             std::cout << "Type: [" << messageType << "]" << std::endl;
@@ -135,6 +154,7 @@ public:
         switch (type)
         {
         case MessageType::UploadCommand:
+        case MessageType::DownloadCommand:
             message << filename;
             break;
 
@@ -151,3 +171,6 @@ public:
         sendMessage(socket, message.str());
     }
 };
+
+Message readMessage(int socket);
+void awaitOk(int socket);
