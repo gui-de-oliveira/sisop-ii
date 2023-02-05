@@ -27,3 +27,18 @@ int connectToServer(char *address, int port);
 // server specific methods
 int startServer(int port);
 int awaitConnection(int serverSocketDescriptor);
+
+class Session
+{
+public:
+    int clientId;
+    int socket;
+    std::string username;
+
+    Session(int _clientId, int _socket, std::string _username)
+    {
+        clientId = _clientId;
+        socket = _socket;
+        username = _username;
+    }
+};

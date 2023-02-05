@@ -1,5 +1,5 @@
 #!/bin/bash
 
-g++ -o server message.cpp socket.cpp server.cpp
-g++ -o client message.cpp socket.cpp client.cpp
-g++ -o foobar message.cpp socket.cpp foobar.cpp
+g++ -o build/server src/libs/socket.cpp src/libs/fileManager.cpp src/libs/helpers.cpp src/libs/message.cpp src/server.cpp
+g++ -o build/client src/libs/socket.cpp src/libs/fileManager.cpp src/libs/helpers.cpp src/libs/message.cpp src/client.cpp
+# g++ -o build/foobar src/libs/socket.cpp src/libs/fileManager.cpp src/libs/helpers.cpp src/libs/message.cpp src/sandbox/foobar.cpp

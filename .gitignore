@@ -1,8 +1,5 @@
-server
-client
 readme
-tests
-foobar
-foobar.cpp
 in/
 out/
+build/
+src/sandbox/

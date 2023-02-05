@@ -4,8 +4,8 @@
 #include <string.h>
 #include <fstream>
 
-#include "socket.h"
-#include "message.h"
+#include "libs/socket.h"
+#include "libs/message.h"
 
 using namespace std;
 
