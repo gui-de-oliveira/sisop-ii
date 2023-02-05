@@ -5,6 +5,7 @@
 #include <fstream>
 
 #include "socket.h"
+#include "message.h"
 
 using namespace std;
 
@@ -37,11 +38,11 @@ int main(int argc, char *argv[])
     auto awaitOk = [socket]()
     {
         char buffer[MAX_BUFFER_SIZE];
-        awaitMessage(&buffer, socket);
+        listenPacket(&buffer, socket);
     };
 
     cout << "Logging as " << username << "... ";
-    sendMessage(socket, username);
+    sendPacket(socket, username);
     awaitOk();
     cout << "OK!" << endl;
 
@@ -165,7 +166,7 @@ int main(int argc, char *argv[])
 
             while (true)
             {
-                Message message = readMessage(socket);
+                Message message = listenMessage(socket);
 
                 if (message.type == MessageType::DataMessage)
                 {
@@ -193,9 +194,9 @@ int main(int argc, char *argv[])
     while (true)
     {
         cout << "> ";
-        sendCustomMessage(socket);
+        sendCustomPacket(socket);
 
-        awaitMessage(&buffer, socket);
+        listenPacket(&buffer, socket);
         cout << "< " << buffer << endl;
     }
 

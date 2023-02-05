@@ -1,4 +1,3 @@
-#include "socket.h"
 #include <iostream>
 #include <string>
 #include <stdio.h>
@@ -17,6 +16,8 @@
 #include <fstream>
 #include <sstream>
 
+#include "socket.h"
+
 std::string Color::red = "\033[31m";
 std::string Color::green = "\033[32m";
 std::string Color::yellow = "\033[33m";
@@ -28,7 +29,7 @@ void clearBuffer(char (*buffer)[MAX_BUFFER_SIZE])
     memset(buffer, 0, sizeof(*buffer));
 }
 
-bool awaitMessage(char (*buffer)[MAX_BUFFER_SIZE], int socketDescriptor)
+bool listenPacket(char (*buffer)[MAX_BUFFER_SIZE], int socketDescriptor)
 {
     clearBuffer(buffer);
     int bytesRead = recv(socketDescriptor, (char *)buffer, sizeof(*buffer), 0);
@@ -43,7 +44,7 @@ bool awaitMessage(char (*buffer)[MAX_BUFFER_SIZE], int socketDescriptor)
     return false;
 }
 
-void sendMessage(int socket, std::string message)
+void sendPacket(int socket, std::string message)
 {
     char buffer[MAX_BUFFER_SIZE];
     clearBuffer(&buffer);
@@ -52,25 +53,17 @@ void sendMessage(int socket, std::string message)
     clearBuffer(&buffer);
 }
 
-void sendCustomMessage(int socket)
+void sendCustomPacket(int socket)
 {
     std::string data;
     getline(std::cin, data);
-    sendMessage(socket, data);
-}
-
-Message readMessage(int socket)
-{
-    char buffer[MAX_BUFFER_SIZE];
-    awaitMessage(&buffer, socket);
-    Message::Ok().send(socket);
-    return Message::Parse(buffer);
+    sendPacket(socket, data);
 }
 
 void awaitOk(int socket)
 {
     char buffer[MAX_BUFFER_SIZE];
-    awaitMessage(&buffer, socket);
+    listenPacket(&buffer, socket);
 }
 
 // = CLIENT METHODS ========================================================================

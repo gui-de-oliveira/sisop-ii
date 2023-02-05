@@ -12,6 +12,7 @@
 #include <time.h>
 
 #include "socket.h"
+#include "message.h"
 
 using namespace std;
 
@@ -105,8 +106,6 @@ public:
     }
 };
 
-ThreadSafeQueue<future<void> *> temporary;
-
 void processQueue(ThreadSafeQueue<FileAction> *, Piper *);
 std::future<void> startQueueProcessor(ThreadSafeQueue<FileAction> *, Piper *);
 
@@ -191,7 +190,7 @@ void downloadFile(Session session, string filename, Piper *piper)
     while (true)
     {
         char buffer[MAX_BUFFER_SIZE];
-        bool closeConnection = awaitMessage(&buffer, session.socket);
+        bool closeConnection = listenPacket(&buffer, session.socket);
         Message::Ok().send(session.socket);
 
         if (closeConnection)
@@ -364,7 +363,7 @@ int main(int argc, char *argv[])
         std::cout << Color::blue << "New client connected. Id: " << clientId << Color::reset << std::endl;
 
         char buffer[MAX_BUFFER_SIZE];
-        bool closeConnection = awaitMessage(&buffer, clientSocket);
+        bool closeConnection = listenPacket(&buffer, clientSocket);
         Message::Ok().send(clientSocket);
 
         if (closeConnection)
@@ -396,7 +395,7 @@ void onConnect(Session session, ThreadSafeQueue<FileAction> *queue)
     while (true)
     {
         char buffer[MAX_BUFFER_SIZE];
-        bool closeConnection = awaitMessage(&buffer, session.socket);
+        bool closeConnection = listenPacket(&buffer, session.socket);
 
         if (closeConnection)
         {
