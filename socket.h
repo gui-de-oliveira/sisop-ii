@@ -117,6 +117,7 @@ public:
 
         default:
             std::cout << "Couldn't parse message: " << buffer << std::endl;
+            std::cout << "Type: [" << messageType << "]" << std::endl;
             return Message::InvalidMessage();
         }
     }

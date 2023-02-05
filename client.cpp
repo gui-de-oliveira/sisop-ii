@@ -34,8 +34,15 @@ int main(int argc, char *argv[])
     int socket = connectToServer(serverIpAddress, port);
     cout << "OK!" << endl;
 
+    auto awaitOk = [socket]()
+    {
+        char buffer[MAX_BUFFER_SIZE];
+        awaitMessage(&buffer, socket);
+    };
+
     cout << "Logging as " << username << "... ";
     sendMessage(socket, username);
+    awaitOk();
     cout << "OK!" << endl;
 
     // Após iniciar uma sessão, o usuário deve ser capaz de arrastar arquivos para o diretório ‘sync_dir’
@@ -46,12 +53,6 @@ int main(int argc, char *argv[])
 
     // Além disso, uma interface deve ser acessível via linha de comando, permitindo que o usuário realize as
     // operações básicas do sistema, detalhadas na tabela abaixo.
-
-    auto awaitOk = [socket]()
-    {
-        char buffer[MAX_BUFFER_SIZE];
-        awaitMessage(&buffer, socket);
-    };
 
     while (true)
     {
@@ -102,7 +103,9 @@ int main(int argc, char *argv[])
 
             string filename = extractFilenameFromPath(path);
             Message::UploadCommand(filename).send(socket);
+            std::cout << "Waiting for an OK...";
             awaitOk();
+            std::cout << "OK!" << endl;
 
             string line;
             std::cout << "Sending file...";
