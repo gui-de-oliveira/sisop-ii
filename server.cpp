@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <functional>
+#include <map>
+#include <time.h>
 
 #include "socket.h"
 
@@ -41,14 +43,17 @@ public:
     Session session = Session(0, 0, "");
     string filename;
     FileActionType type;
+    time_t timestamp;
 
     FileAction(Session _session,
                string _filename,
-               FileActionType _type)
+               FileActionType _type,
+               time_t _timestamp)
     {
         filename = _filename;
         session = _session;
         type = _type;
+        timestamp = _timestamp;
     }
 };
 
@@ -110,6 +115,154 @@ std::future<void> startQueueProcessor(ThreadSafeQueue<FileAction> *queue, Piper 
     std::future<void> queueProcessor = async(launch::async, processQueue, queue, piper);
     return queueProcessor;
 }
+enum FileStateTag
+{
+    Empty,
+    Reading,
+    Updating,
+    Deleting
+};
+
+class FileState
+{
+public:
+    FileStateTag tag;
+    std::future<void> *executingOperation;
+
+    time_t created;
+    time_t updated;
+    time_t acessed;
+
+    static FileState Empty()
+    {
+        FileState state;
+        state.tag = FileStateTag::Empty;
+        return state;
+    }
+};
+
+class UserFiles
+{
+
+public:
+    map<string, FileState> fileStatesByFilename;
+    FileState get(string filename)
+    {
+        if (fileStatesByFilename.find(filename) == fileStatesByFilename.end())
+        {
+            return FileState::Empty();
+        }
+
+        return fileStatesByFilename[filename];
+    }
+
+    void update(string name, FileState state)
+    {
+        fileStatesByFilename[name] = state;
+    }
+};
+
+class FilesManager
+{
+    map<string, UserFiles *> userFilesByUsername;
+
+public:
+    UserFiles *getFiles(string username)
+    {
+        if (userFilesByUsername.find(username) == userFilesByUsername.end())
+        {
+            UserFiles *initial = (UserFiles *)malloc(sizeof(UserFiles));
+            *initial = UserFiles();
+            userFilesByUsername[username] = initial;
+        }
+
+        return userFilesByUsername[username];
+    }
+};
+
+FilesManager fileManager;
+
+void downloadFile(Session session, string filename, Piper *piper)
+{
+    std::fstream file;
+    string filePath = "out/" + session.username + "/" + filename;
+    file.open(filePath, ios::out);
+
+    while (true)
+    {
+        char buffer[MAX_BUFFER_SIZE];
+        bool closeConnection = awaitMessage(&buffer, session.socket);
+        Message::Ok().send(session.socket);
+
+        if (closeConnection)
+            break;
+
+        Message message = Message::Parse(buffer);
+
+        if (message.type == MessageType::DataMessage)
+        {
+            std::cout << session.username << ": [data]" << std::endl;
+            file << message.data;
+            continue;
+        }
+
+        if (message.type == MessageType::EndCommand)
+        {
+            std::cout << session.username << ": [end]" << std::endl;
+            break;
+        }
+
+        std::cout << "Unhandled message from " << session.username << ": " << buffer << std::endl;
+    }
+
+    file.close();
+    piper->start(session);
+    return;
+}
+future<void> *allocateFunction()
+{
+    return (future<void> *)malloc(sizeof(future<void>));
+}
+
+FileState getNextState(FileState lastFileState, FileAction fileAction, Piper *piper)
+{
+    FileState nextState;
+
+    if (lastFileState.tag == FileStateTag::Empty && fileAction.type == FileActionType::Upload)
+    {
+        nextState.tag = FileStateTag::Updating;
+        nextState.created = fileAction.timestamp;
+        nextState.acessed = fileAction.timestamp;
+        nextState.updated = fileAction.timestamp;
+
+        nextState.executingOperation = allocateFunction();
+        *(nextState.executingOperation) = async(
+            launch::async,
+            [fileAction, piper]
+            {
+                downloadFile(fileAction.session, fileAction.filename, piper);
+            });
+
+        return nextState;
+    }
+
+    else if ((lastFileState.tag == FileStateTag::Updating || lastFileState.tag == FileStateTag::Reading || lastFileState.tag == FileStateTag::Deleting) && fileAction.type == FileActionType::Upload)
+    {
+        nextState.tag = FileStateTag::Updating;
+        nextState.updated = fileAction.timestamp;
+
+        nextState.executingOperation = allocateFunction();
+        *(nextState.executingOperation) = async(
+            launch::async,
+            [fileAction, piper, lastFileState]
+            {
+                (lastFileState.executingOperation)->wait();
+                downloadFile(fileAction.session, fileAction.filename, piper);
+            });
+
+        return nextState;
+    }
+}
 
 void processQueue(ThreadSafeQueue<FileAction> *queue, Piper *piper)
 {
@@ -117,46 +270,12 @@ void processQueue(ThreadSafeQueue<FileAction> *queue, Piper *piper)
     {
         FileAction fileAction = queue->pop();
         Message::Ok().send(fileAction.session.socket);
-        auto run = [fileAction, piper]
-        {
-            std::fstream file;
-            string filePath = "out/" + fileAction.session.username + "/" + fileAction.filename;
-            file.open(filePath, ios::out);
 
-            while (true)
-            {
-                char buffer[MAX_BUFFER_SIZE];
-                bool closeConnection = awaitMessage(&buffer, fileAction.session.socket);
-                Message::Ok().send(fileAction.session.socket);
+        string username = fileAction.session.username;
 
-                if (closeConnection)
-                    break;
-
-                Message message = Message::Parse(buffer);
-
-                if (message.type == MessageType::DataMessage)
-                {
-                    std::cout << "Data from " << fileAction.session.username << std::endl;
-                    file << message.data;
-                    continue;
-                }
-
-                if (message.type == MessageType::EndCommand)
-                {
-                    std::cout << "End from " << fileAction.session.username << std::endl;
-                    break;
-                }
-
-                std::cout << "Unhandled message from " << fileAction.session.username << ": " << buffer << std::endl;
-            }
-
-            file.close();
-            piper->start(fileAction.session);
-        };
-
-        future<void> *execution = (future<void> *)malloc(sizeof(future<void>));
-        *execution = async(launch::async, run);
-        temporary.queue(execution);
+        UserFiles *userFiles = fileManager.getFiles(username);
+        FileState lastFileState = userFiles->get(fileAction.filename);
+        userFiles->fileStatesByFilename[fileAction.filename] = getNextState(lastFileState, fileAction, piper);
     }
 }
 
@@ -229,7 +348,7 @@ void onConnect(Session session, ThreadSafeQueue<FileAction> *queue)
 
         if (message.type == MessageType::UploadCommand)
         {
-            queue->queue(FileAction(session, message.filename, FileActionType::Upload));
+            queue->queue(FileAction(session, message.filename, FileActionType::Upload, message.timestamp));
             return;
         }
 

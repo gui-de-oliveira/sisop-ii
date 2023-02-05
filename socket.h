@@ -39,13 +39,17 @@ enum MessageType
 class Message
 {
 protected:
-    Message(){};
+    Message()
+    {
+        timestamp = time(0);
+    };
 
 public:
     MessageType type;
 
     std::string filename;
     std::string data;
+    time_t timestamp;
 
     static Message InvalidMessage()
     {
