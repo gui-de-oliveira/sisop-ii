@@ -16,7 +16,7 @@
 
 using namespace std;
 
-void onConnect(Session, ThreadSafeQueue<FileAction> *);
+void expectFileAction(Session, ThreadSafeQueue<FileAction> *);
 
 class Singleton
 {
@@ -37,7 +37,7 @@ public:
     void start(Session session)
     {
         runner->queue(
-            async(launch::async, onConnect, session, fileQueue));
+            async(launch::async, expectFileAction, session, fileQueue));
     }
 };
 
@@ -94,18 +94,19 @@ int main(int argc, char *argv[])
 
         std::cout << Color::blue << "New client connected. Id: " << clientId << Color::reset << std::endl;
 
-        char buffer[MAX_BUFFER_SIZE];
-        bool closeConnection = listenPacket(&buffer, clientSocket);
-        Message::Ok().send(clientSocket);
+        auto login = Message::Listen(clientSocket);
 
-        if (closeConnection)
+        if (login.type != MessageType::Login)
         {
-            close(clientSocket);
             std::cout << "Login failed for Client id " << clientId << std::endl;
+            login.panic();
+            close(clientSocket);
             continue;
-        };
+        }
 
-        string username = buffer;
+        login.Reply(Message::Response(ResponseType::Ok), false);
+
+        string username = login.username;
         string folder = "out/" + username + "/";
         mkdir(folder.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
@@ -118,7 +119,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void onConnect(Session session, ThreadSafeQueue<FileAction> *queue)
+void expectFileAction(Session session, ThreadSafeQueue<FileAction> *queue)
 {
     std::ostringstream clientNameStream;
     clientNameStream << Color::yellow << "[" << session.clientId << "]" << Color::reset;
@@ -126,16 +127,8 @@ void onConnect(Session session, ThreadSafeQueue<FileAction> *queue)
 
     while (true)
     {
-        char buffer[MAX_BUFFER_SIZE];
-        bool closeConnection = listenPacket(&buffer, session.socket);
-
-        if (closeConnection)
-        {
-            std::cout << clientName << " ended connection" << std::endl;
-            break;
-        }
-
-        Message message = Message::Parse(buffer);
+        Message message = Message::Listen(session.socket);
+        std::cout << clientName << " queued " << message.type << std::endl;
 
         if (message.type == MessageType::UploadCommand)
         {
@@ -149,13 +142,18 @@ void onConnect(Session session, ThreadSafeQueue<FileAction> *queue)
             return;
         }
 
-        if (message.type == MessageType::Ok || message.type == MessageType::EndCommand || message.type == MessageType::DataMessage)
+        if (message.type == MessageType::DeleteCommand)
         {
-            std::cout << "[ignored] " << message.type << " from " << clientName << std::endl;
-            continue;
+            queue->queue(FileAction(session, message.filename, FileActionType::Delete, message.timestamp));
+            return;
         }
 
-        std::cout << "Unhandled message from " << clientName << ": " << buffer << std::endl;
+        if (message.type == MessageType::Empty)
+        {
+            break;
+        }
+
+        message.panic();
     }
 
     close(session.socket);

@@ -1,4 +1,5 @@
 #include "message.h"
+#include "helpers.h"
 #include "socket.h"
 
 Message::Message()
@@ -12,9 +13,17 @@ Message::Message(MessageType type)
     this->type = type;
 };
 
+Message::Message(MessageType type, std::string filename)
+{
+    this->timestamp = time(0);
+    this->type = type;
+    this->filename = filename;
+};
+
 Message Message::InvalidMessage() { return Message(MessageType::InvalidMessage); }
 Message Message::EndCommand() { return Message(MessageType::EndCommand); }
-Message Message::Ok() { return Message(MessageType::Ok); }
+Message Message::Start() { return Message(MessageType::Start); }
+Message Message::Empty() { return Message(MessageType::Empty); }
 
 Message Message::DataMessage(std::string data)
 {
@@ -23,18 +32,30 @@ Message Message::DataMessage(std::string data)
     return message;
 }
 
-Message Message::UploadCommand(std::string filename)
+Message Message::Response(ResponseType type)
 {
-    Message message(MessageType::UploadCommand);
-    message.filename = filename;
+    Message message(MessageType::Response);
+    message.responseType = type;
     return message;
 }
 
-Message Message::DownloadCommand(std::string filename)
+Message Message::Login(std::string username)
 {
-    Message message(MessageType::DownloadCommand);
-    message.filename = filename;
+    Message message(MessageType::Login);
+    message.username = username;
     return message;
+}
+
+Message Message::UploadCommand(std::string filename) { return Message(MessageType::UploadCommand, filename); }
+Message Message::DownloadCommand(std::string filename) { return Message(MessageType::DownloadCommand, filename); }
+Message Message::DeleteCommand(std::string filename) { return Message(MessageType::DeleteCommand, filename); }
+
+bool isFileNameValid(std::string filename)
+{
+    if (filename.length() <= 0)
+        return false;
+
+    return true;
 }
 
 Message Message::Parse(char *_buffer)
@@ -42,79 +63,161 @@ Message Message::Parse(char *_buffer)
     Message message;
 
     std::string buffer = _buffer;
+    if (buffer.length() == 0)
+    {
+        return Message::Empty();
+    }
+
     char header = buffer[0];
-    std::string data = buffer.substr(2);
+    std::string data = buffer.length() <= 2 ? "" : buffer.substr(2);
 
     MessageType messageType = (MessageType)atoi(&header);
 
     switch (messageType)
     {
-    case MessageType::Ok:
-        return Message::Ok();
-
+    case MessageType::Start:
     case MessageType::EndCommand:
-        return Message::EndCommand();
+    {
+        return Message(messageType);
+    }
 
     case MessageType::DataMessage:
+    {
         return Message::DataMessage(data);
+    }
+
+    case MessageType::Login:
+    {
+        return Message::Login(data);
+    }
+
+    case MessageType::Response:
+    {
+        ResponseType responseType = (ResponseType)atoi(&data[0]);
+        return Message::Response(responseType);
+    }
 
     case MessageType::UploadCommand:
-        if (data.length() <= 0)
-        {
-            return Message::InvalidMessage();
-        }
-
-        // TODO: Check for invalid characters on filename
-
-        return Message::UploadCommand(data);
-
     case MessageType::DownloadCommand:
-        if (data.length() <= 0)
+    case MessageType::DeleteCommand:
+    {
+        if (!isFileNameValid(data))
         {
             return Message::InvalidMessage();
         }
 
-        // TODO: Check for invalid characters on filename
-
-        return Message::DownloadCommand(data);
+        return Message(messageType, data);
+    }
 
     default:
+    {
         std::cout << "Couldn't parse message: " << buffer << std::endl;
         std::cout << "Type: [" << messageType << "]" << std::endl;
         return Message::InvalidMessage();
     }
+    }
+
+    throw new std::exception;
 }
 
-void Message::send(int socket)
+Message Message::Listen(int socket)
 {
-    std::ostringstream message;
+    char buffer[MAX_BUFFER_SIZE];
+    listenPacket(&buffer, socket);
+    Message message = Message::Parse(buffer);
+    message.socket = socket;
+    return message;
+}
 
-    message << type << ":";
+std::string Message::toPacket()
+{
+    if (type == MessageType::Empty)
+    {
+        return "";
+    };
+
+    std::ostringstream packet;
+
+    packet << type << ":";
 
     switch (type)
     {
+    case MessageType::Login:
+        packet << this->username;
+        break;
+
     case MessageType::UploadCommand:
     case MessageType::DownloadCommand:
-        message << filename;
+    case MessageType::DeleteCommand:
+        packet << this->filename;
+        break;
+
+    case MessageType::Response:
+        packet << this->responseType;
         break;
 
     case MessageType::DataMessage:
-        message << data;
+        packet << this->data;
         break;
 
-    case MessageType::Ok:
     case MessageType::EndCommand:
+    case MessageType::Start:
     case MessageType::InvalidMessage:
         break;
     }
 
-    sendPacket(socket, message.str());
+    return packet.str();
+}
+
+Message Message::Reply(Message message, bool expectReply)
+{
+    sendPacket(this->socket, message.toPacket());
+
+    if (!expectReply)
+        return Message::InvalidMessage();
+
+    Message response = Message::Listen(this->socket);
+    return response;
+}
+
+Message Message::send(int socket, bool expectReply)
+{
+    this->socket = socket;
+    sendPacket(socket, this->toPacket());
+
+    if (!expectReply)
+        return Message::InvalidMessage();
+
+    Message response = Message::Listen(this->socket);
+    return response;
 }
 
 Message listenMessage(int socket)
 {
     char buffer[MAX_BUFFER_SIZE];
     listenPacket(&buffer, socket);
-    Message::Ok().send(socket);
-    return Message::Parse(buffer);
+    Message message = Message::Parse(buffer);
+    message.socket = socket;
+    return message;
+}
+
+void Message::panic()
+{
+    cout << Color::red
+         << "Invalid server response.\n"
+         << "Received: { " << std::endl
+         << "type: " << this->type << std::endl
+         << "data: " << this->data << std::endl
+         << "responseType: " << this->responseType << std::endl
+         << "filename: " << this->filename << std::endl
+         << "username: " << this->username << std::endl
+         << "}"
+         << Color::reset
+         << endl;
+}
+
+bool Message::isOk()
+{
+    return this->type == MessageType::Response &&
+           this->responseType == ResponseType::Ok;
 }

@@ -5,45 +5,83 @@
 
 using namespace std;
 
+FileState uploadCommand(FileState lastFileState, FileAction fileAction, Callback onComplete)
+{
+    FileState nextState;
+    nextState.tag = FileStateTag::Updating;
+    nextState.updated = fileAction.timestamp;
+
+    if (lastFileState.IsEmptyState() || lastFileState.IsDeletingState())
+    {
+        nextState.created = fileAction.timestamp;
+        nextState.acessed = fileAction.timestamp;
+    }
+
+    nextState.executingOperation = allocateFunction();
+    *(nextState.executingOperation) = async(
+        launch::async,
+        [fileAction, onComplete, lastFileState]
+        {
+            if (lastFileState.tag != FileStateTag::EmptyFile)
+            {
+                (lastFileState.executingOperation)->wait();
+            }
+
+            Message::Response(ResponseType::Ok).send(fileAction.session.socket, false);
+            downloadFile(fileAction.session, fileAction.filename);
+            onComplete();
+        });
+
+    return nextState;
+}
+
+FileState deleteCommand(FileState lastFileState, FileAction fileAction, Callback onComplete)
+{
+    FileState nextState;
+
+    if (!lastFileState.IsEmptyState())
+    {
+        nextState.tag = FileStateTag::Deleting;
+    }
+
+    nextState.executingOperation = allocateFunction();
+    *(nextState.executingOperation) = async(
+        launch::async,
+        [fileAction, onComplete, lastFileState]
+        {
+            if (lastFileState.tag == FileStateTag::EmptyFile)
+            {
+                Message::Response(ResponseType::FileNotFound).send(fileAction.session.socket, false);
+                onComplete();
+                return;
+            }
+
+            if (lastFileState.tag != FileStateTag::EmptyFile)
+            {
+                (lastFileState.executingOperation)->wait();
+            }
+
+            Message::Response(ResponseType::Ok).send(fileAction.session.socket, false);
+            string path = "out/" + fileAction.session.username + "/" + fileAction.filename;
+            deleteFile(fileAction.session, path);
+            onComplete();
+        });
+
+    return nextState;
+}
+
 FileState getNextState(FileState lastFileState, FileAction fileAction, Callback onComplete)
 {
     FileState nextState;
 
-    if (lastFileState.tag == FileStateTag::Empty && fileAction.type == FileActionType::Upload)
+    if (fileAction.type == FileActionType::Upload)
     {
-        nextState.tag = FileStateTag::Updating;
-        nextState.created = fileAction.timestamp;
-        nextState.acessed = fileAction.timestamp;
-        nextState.updated = fileAction.timestamp;
-
-        nextState.executingOperation = allocateFunction();
-        *(nextState.executingOperation) = async(
-            launch::async,
-            [fileAction, onComplete]
-            {
-                Message::Ok().send(fileAction.session.socket);
-                downloadFile(fileAction.session, fileAction.filename, onComplete);
-            });
-
-        return nextState;
+        return uploadCommand(lastFileState, fileAction, onComplete);
     }
 
-    else if ((lastFileState.tag == FileStateTag::Updating || lastFileState.tag == FileStateTag::Reading || lastFileState.tag == FileStateTag::Deleting) && fileAction.type == FileActionType::Upload)
+    if (fileAction.type == FileActionType::Delete)
     {
-        nextState.tag = FileStateTag::Updating;
-        nextState.updated = fileAction.timestamp;
-
-        nextState.executingOperation = allocateFunction();
-        *(nextState.executingOperation) = async(
-            launch::async,
-            [fileAction, onComplete, lastFileState]
-            {
-                (lastFileState.executingOperation)->wait();
-                Message::Ok().send(fileAction.session.socket);
-                downloadFile(fileAction.session, fileAction.filename, onComplete);
-            });
-
-        return nextState;
+        return deleteCommand(lastFileState, fileAction, onComplete);
     }
 
     else if (fileAction.type == FileActionType::Read)
@@ -56,16 +94,17 @@ FileState getNextState(FileState lastFileState, FileAction fileAction, Callback 
 
         *(nextState.executingOperation) = async(
             launch::async,
-            [fileAction, onComplete, lastFileState]
+            [fileAction, onComplete, &lastFileState]
             {
-                Message::Ok().send(fileAction.session.socket);
+                Message::Response(ResponseType::Ok).send(fileAction.session.socket);
                 awaitOk(fileAction.session.socket);
 
-                if (lastFileState.tag == FileStateTag::Empty)
+                if (lastFileState.IsEmptyState())
                 {
                     Message::EndCommand().send(fileAction.session.socket);
+                    onComplete();
                 }
-                else if (lastFileState.tag == FileStateTag::Reading)
+                else if (lastFileState.IsReadingState())
                 {
                     sendFile(fileAction.session, fileAction.filename, onComplete);
                     (lastFileState.executingOperation)->wait();
@@ -83,42 +122,47 @@ FileState getNextState(FileState lastFileState, FileAction fileAction, Callback 
     throw exception();
 }
 
-void downloadFile(Session session, string filename, Callback onComplete)
+void deleteFile(Session session, string path)
+{
+    Message message = Message::Listen(session.socket);
+    if (message.type != MessageType::Start)
+    {
+        message.panic();
+        return;
+    }
+
+    remove(path.c_str());
+    message.Reply(Message::Response(ResponseType::Ok), false);
+}
+
+void downloadFile(Session session, string filename)
 {
     std::fstream file;
     string filePath = "out/" + session.username + "/" + filename;
     file.open(filePath, ios::out);
 
+    Message message = Message::Listen(session.socket);
     while (true)
     {
-        char buffer[MAX_BUFFER_SIZE];
-        bool closeConnection = listenPacket(&buffer, session.socket);
-        Message::Ok().send(session.socket);
-
-        if (closeConnection)
-            break;
-
-        Message message = Message::Parse(buffer);
-
         if (message.type == MessageType::DataMessage)
         {
             std::cout << session.username << ": [data]" << std::endl;
             file << message.data;
+            message = message.Reply(Message::Response(ResponseType::Ok));
             continue;
         }
 
         if (message.type == MessageType::EndCommand)
         {
             std::cout << session.username << ": [end]" << std::endl;
+            message.Reply(Message::Response(ResponseType::Ok), false);
             break;
         }
 
-        std::cout << "Unhandled message from " << session.username << ": " << buffer << std::endl;
+        message.panic();
     }
 
     file.close();
-    onComplete();
-    return;
 }
 
 void sendFile(Session session, string filename, Callback onComplete)

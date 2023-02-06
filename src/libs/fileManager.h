@@ -33,7 +33,7 @@ public:
 
 enum FileStateTag
 {
-    Empty,
+    EmptyFile,
     Reading,
     Updating,
     Deleting
@@ -49,10 +49,15 @@ public:
     time_t updated;
     time_t acessed;
 
+    bool IsEmptyState() { return this->tag == FileStateTag::EmptyFile; }
+    bool IsReadingState() { return this->tag == FileStateTag::Reading; }
+    bool IsUpdatingState() { return this->tag == FileStateTag::Updating; }
+    bool IsDeletingState() { return this->tag == FileStateTag::Deleting; }
+
     static FileState Empty()
     {
         FileState state;
-        state.tag = FileStateTag::Empty;
+        state.tag = FileStateTag::EmptyFile;
         return state;
     }
 };
@@ -97,5 +102,6 @@ public:
 };
 
 FileState getNextState(FileState lastFileState, FileAction fileAction, Callback onComplete);
-void downloadFile(Session session, string filename, Callback onComplete);
+void deleteFile(Session session, string path);
+void downloadFile(Session session, string filename);
 void sendFile(Session session, string filename, Callback onComplete);
