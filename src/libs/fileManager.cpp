@@ -4,6 +4,19 @@
 
 using namespace std;
 
+std::string extractLabelFromPath(std::string path)
+{
+    bool hasDirectory = path.find("/") != -1;
+
+    if (!hasDirectory)
+    {
+        return path;
+    }
+
+    int lastDirectory = path.rfind("/");
+    return path.substr(lastDirectory + 1);
+}
+
 std::string toString(FileActionType type)
 {
     switch (type)

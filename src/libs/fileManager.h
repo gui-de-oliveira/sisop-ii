@@ -1,5 +1,7 @@
 #include <future>
 #include <map>
+#include <filesystem>
+#include <string.h>
 
 #include "helpers.h"
 #include "message.h"
@@ -83,11 +85,49 @@ public:
     }
 };
 
+std::string extractLabelFromPath(std::string path);
+
 class FilesManager
 {
     std::map<std::string, UserFiles *> userFilesByUsername;
 
 public:
+    FilesManager()
+    {
+        for (const auto &userEntry : std::filesystem::directory_iterator("out/"))
+        {
+            if (!userEntry.is_directory())
+            {
+                continue;
+            }
+
+            std::string username = extractLabelFromPath(userEntry.path());
+
+            UserFiles *userFiles = getFiles(username);
+
+            for (const auto &fileEntry : std::filesystem::directory_iterator("out/" + username))
+            {
+                if (!fileEntry.is_regular_file())
+                {
+                    continue;
+                }
+                std::string filename = extractLabelFromPath(fileEntry.path());
+
+                FileState fileState = FileState::Empty();
+                fileState.tag = FileStateTag::Updating;
+                fileState.executingOperation = allocateFunction();
+                *(fileState.executingOperation) = std::async(launch::async, [] {});
+
+                // todo: load it
+                fileState.acessed = 0;
+                fileState.created = 0;
+                fileState.updated = 0;
+
+                userFiles->fileStatesByFilename[filename] = fileState;
+            }
+        }
+    }
+
     UserFiles *getFiles(std::string username)
     {
         if (userFilesByUsername.find(username) == userFilesByUsername.end())
