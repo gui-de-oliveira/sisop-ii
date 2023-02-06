@@ -4,7 +4,6 @@
 #include <string.h>
 #include <fstream>
 
-#include "libs/socket.h"
 #include "libs/message.h"
 
 using namespace std;
@@ -54,36 +53,13 @@ void uploadCommand(int socket, string path)
 
     Message response = Message::UploadCommand(filename).send(socket);
 
-    if (response.type != MessageType::Response ||
-        response.responseType != ResponseType::Ok)
+    if (!response.isOk())
     {
         response.panic();
         return;
     }
 
-    string line;
-    std::cout << "Sending file...";
-    while (getline(file, line))
-    {
-        auto response = Message::DataMessage(line + "\n").send(socket);
-
-        if (response.type != MessageType::Response ||
-            response.responseType != ResponseType::Ok)
-        {
-            response.panic();
-            file.close();
-            return;
-        }
-    }
-    std::cout << "OK!" << std::endl;
-    file.close();
-
-    auto ack = Message::EndCommand().send(socket);
-    if (ack.type != MessageType::Response ||
-        ack.responseType != ResponseType::Ok)
-    {
-        ack.panic();
-    }
+    sendFile(Session(0, socket, ""), path);
 }
 
 bool isFilenameValid(string filename)
@@ -106,46 +82,15 @@ void downloadCommand(int socket, string filename)
         return;
     }
 
-    fstream file;
-    file.open(filename, ios::out);
+    Message message = Message::DownloadCommand(filename).send(socket);
 
-    if (!file)
+    if (!message.isOk())
     {
-        cout << Color::red
-             << "Couldn't open file on path \""
-             << filename
-             << "\""
-             << Color::reset
-             << endl;
-        file.close();
+        message.panic();
         return;
     }
 
-    Message::DownloadCommand(filename).send(socket);
-    awaitOk(socket);
-
-    Message::Response(ResponseType::Ok).send(socket);
-
-    while (true)
-    {
-        Message message = listenMessage(socket);
-
-        if (message.type == MessageType::DataMessage)
-        {
-            file << message.data;
-            std::cout << "Received data" << endl;
-            continue;
-        }
-
-        if (message.type == MessageType::EndCommand)
-        {
-            break;
-        }
-
-        std::cout << "Unhandled message " << message.type << endl;
-    }
-
-    file.close();
+    downloadFile(Session(0, socket, ""), filename);
 }
 
 void deleteCommand(int socket, string filename)

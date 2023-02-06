@@ -1,6 +1,7 @@
+#include <fstream>
+
 #include "message.h"
 #include "helpers.h"
-#include "socket.h"
 
 Message::Message()
 {
@@ -220,4 +221,90 @@ bool Message::isOk()
 {
     return this->type == MessageType::Response &&
            this->responseType == ResponseType::Ok;
+}
+
+// == FILE ============================================
+
+void deleteFile(Session session, string path)
+{
+    Message message = Message::Listen(session.socket);
+    if (message.type != MessageType::Start)
+    {
+        message.panic();
+        return;
+    }
+
+    remove(path.c_str());
+    message.Reply(Message::Response(ResponseType::Ok), false);
+}
+
+void downloadFile(Session session, string path)
+{
+    std::fstream file;
+    file.open(path, ios::out);
+
+    Message message = Message::Listen(session.socket);
+
+    if (message.type != MessageType::Start)
+    {
+        message.panic();
+        return;
+    }
+
+    message = message.Reply(Message::Response(ResponseType::Ok));
+
+    while (true)
+    {
+        if (message.type == MessageType::DataMessage)
+        {
+            std::cout << session.username << ": [data]" << std::endl;
+            file << message.data;
+            message = message.Reply(Message::Response(ResponseType::Ok));
+            continue;
+        }
+
+        if (message.type == MessageType::EndCommand)
+        {
+            std::cout << session.username << ": [end]" << std::endl;
+            message.Reply(Message::Response(ResponseType::Ok), false);
+            break;
+        }
+
+        message.panic();
+    }
+
+    file.close();
+}
+
+void sendFile(Session session, string path)
+{
+    std::fstream file;
+    file.open(path, ios::in);
+
+    Message message = Message::Start().send(session.socket);
+
+    if (!message.isOk())
+    {
+        message.panic();
+        file.close();
+        return;
+    }
+
+    string line;
+    std::cout << "Sending file...";
+    while (getline(file, line))
+    {
+        message = message.Reply(Message::DataMessage(line + "\n"));
+
+        if (!message.isOk())
+        {
+            message.panic();
+            file.close();
+            return;
+        }
+    }
+    std::cout << "OK!" << std::endl;
+
+    message.Reply(Message::EndCommand());
+    file.close();
 }

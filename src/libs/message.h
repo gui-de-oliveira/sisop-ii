@@ -1,6 +1,8 @@
 #include <string.h>
 #include <iostream>
 
+#include "socket.h"
+
 enum MessageType
 {
     Empty,
@@ -65,3 +67,7 @@ public:
 };
 
 Message listenMessage(int socket);
+
+void deleteFile(Session session, std::string path);
+void downloadFile(Session session, std::string path);
+void sendFile(Session session, std::string path);

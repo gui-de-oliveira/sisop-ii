@@ -2,7 +2,7 @@
 #include <map>
 
 #include "helpers.h"
-#include "socket.h"
+#include "message.h"
 
 enum FileActionType
 {
@@ -101,7 +101,8 @@ public:
     }
 };
 
+std::string toString(FileActionType type);
+std::string toString(FileAction fileAction);
+std::string toString(FileState fileState);
+
 FileState getNextState(FileState lastFileState, FileAction fileAction, Callback onComplete);
-void deleteFile(Session session, string path);
-void downloadFile(Session session, string filename);
-void sendFile(Session session, string filename, Callback onComplete);

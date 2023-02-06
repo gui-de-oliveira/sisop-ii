@@ -11,7 +11,6 @@
 #include <map>
 #include <time.h>
 
-#include "libs/message.h"
 #include "libs/fileManager.h"
 
 using namespace std;
@@ -46,6 +45,7 @@ void processQueue(Singleton *singleton)
     while (true)
     {
         FileAction fileAction = singleton->fileQueue->pop();
+        std::cout << "BEGIN: " << toString(fileAction) << endl;
 
         string username = fileAction.session.username;
 
@@ -54,10 +54,14 @@ void processQueue(Singleton *singleton)
 
         Callback onComplete = [fileAction, singleton]()
         {
+            std::cout << "END: " << toString(fileAction) << endl;
             singleton->start(fileAction.session);
         };
 
-        userFiles->fileStatesByFilename[fileAction.filename] = getNextState(lastFileState, fileAction, onComplete);
+        auto nextState = getNextState(lastFileState, fileAction, onComplete);
+        std::cout << toString(lastFileState) << " > " << toString(nextState) << endl;
+
+        userFiles->fileStatesByFilename[fileAction.filename] = nextState;
     }
 }
 
