@@ -111,17 +111,17 @@ public:
                 {
                     continue;
                 }
-                std::string filename = extractLabelFromPath(fileEntry.path());
+                std::string path = fileEntry.path();
+                std::string filename = extractLabelFromPath(path);
 
                 FileState fileState = FileState::Empty();
                 fileState.tag = FileStateTag::Updating;
                 fileState.executingOperation = allocateFunction();
                 *(fileState.executingOperation) = std::async(launch::async, [] {});
 
-                // todo: load it
-                fileState.acessed = 0;
-                fileState.created = 0;
-                fileState.updated = 0;
+                fileState.acessed = getAccessTime(path);
+                fileState.created = getCreateTime(path);
+                fileState.updated = getModificationTime(path);
 
                 userFiles->fileStatesByFilename[filename] = fileState;
             }

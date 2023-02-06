@@ -48,3 +48,7 @@ public:
         asyncs.queue(execution);
     }
 };
+
+time_t getAccessTime(std::string path);
+time_t getCreateTime(std::string path);
+time_t getModificationTime(std::string path);
