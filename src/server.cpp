@@ -10,6 +10,8 @@
 #include <functional>
 #include <map>
 #include <time.h>
+#include <algorithm>
+#include <iterator>
 
 #include "libs/fileManager.h"
 
@@ -20,9 +22,8 @@ void expectFileAction(Session, ThreadSafeQueue<FileAction> *);
 class Singleton
 {
 protected:
-    AsyncRunner *runner;
-
 public:
+    AsyncRunner *runner;
     ThreadSafeQueue<FileAction> *fileQueue;
     FilesManager *fileManager;
 
@@ -47,16 +48,63 @@ void processQueue(Singleton *singleton)
         FileAction fileAction = singleton->fileQueue->pop();
         std::cout << "BEGIN: " << toString(fileAction) << endl;
 
-        string username = fileAction.session.username;
-
-        UserFiles *userFiles = singleton->fileManager->getFiles(username);
-        FileState lastFileState = userFiles->get(fileAction.filename);
-
         Callback onComplete = [fileAction, singleton]()
         {
             std::cout << "END: " << toString(fileAction) << endl;
             singleton->start(fileAction.session);
         };
+
+        string username = fileAction.session.username;
+
+        UserFiles *userFiles = singleton->fileManager->getFiles(username);
+        if (fileAction.type == FileActionType::ListServer)
+        {
+            list<Message> fileInfos;
+
+            for (auto const &item : userFiles->fileStatesByFilename)
+            {
+                auto name = item.first;
+                auto state = item.second;
+                fileInfos.push_front(Message::FileInfo(name, state.updated, state.acessed, state.created));
+            }
+
+            auto sendFileInfos = [fileAction, fileInfos, onComplete]
+            {
+                auto message = Message::Response(ResponseType::Ok).send(fileAction.session.socket);
+
+                if (message.type != MessageType::Start)
+                {
+                    message.panic();
+                    return;
+                }
+
+                for (auto const &fileInfo : fileInfos)
+                {
+                    message = message.Reply(fileInfo);
+
+                    if (!message.isOk())
+                    {
+                        message.panic();
+                        return;
+                    }
+                }
+
+                message = message.Reply(Message::EndCommand());
+
+                if (!message.isOk())
+                {
+                    message.panic();
+                    return;
+                }
+
+                onComplete();
+            };
+
+            singleton->runner->queue(async(launch::async, sendFileInfos));
+            continue;
+        }
+
+        FileState lastFileState = userFiles->get(fileAction.filename);
 
         auto nextState = getNextState(lastFileState, fileAction, onComplete);
         std::cout << toString(lastFileState) << " > " << toString(nextState) << endl;
@@ -149,6 +197,12 @@ void expectFileAction(Session session, ThreadSafeQueue<FileAction> *queue)
         if (message.type == MessageType::DeleteCommand)
         {
             queue->queue(FileAction(session, message.filename, FileActionType::Delete, message.timestamp));
+            return;
+        }
+
+        if (message.type == MessageType::ListServerCommand)
+        {
+            queue->queue(FileAction(session, "", FileActionType::ListServer, message.timestamp));
             return;
         }
 

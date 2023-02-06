@@ -52,3 +52,6 @@ public:
 time_t getAccessTime(std::string path);
 time_t getCreateTime(std::string path);
 time_t getModificationTime(std::string path);
+
+time_t toTimeT(std::string value);
+std::string toString(time_t value);

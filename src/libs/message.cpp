@@ -23,6 +23,7 @@ Message::Message(MessageType type, std::string filename)
 
 Message Message::InvalidMessage() { return Message(MessageType::InvalidMessage); }
 Message Message::EndCommand() { return Message(MessageType::EndCommand); }
+Message Message::ListServerCommand() { return Message(MessageType::ListServerCommand); }
 Message Message::Start() { return Message(MessageType::Start); }
 Message Message::Empty() { return Message(MessageType::Empty); }
 
@@ -30,6 +31,16 @@ Message Message::DataMessage(std::string data)
 {
     Message message(MessageType::DataMessage);
     message.data = data;
+    return message;
+}
+
+Message Message::FileInfo(std::string filename, time_t mtime, time_t atime, time_t ctime)
+{
+    Message message(MessageType::FileInfo);
+    message.filename = filename;
+    message.mtime = mtime;
+    message.atime = atime;
+    message.ctime = ctime;
     return message;
 }
 
@@ -68,16 +79,30 @@ Message Message::Parse(char *_buffer)
     {
         return Message::Empty();
     }
+    int headerSeparator = buffer.find(":");
+    auto header = buffer.substr(0, headerSeparator).c_str();
+    std::string data = buffer.length() <= headerSeparator ? "" : buffer.substr(headerSeparator + 1);
 
-    char header = buffer[0];
-    std::string data = buffer.length() <= 2 ? "" : buffer.substr(2);
-
-    MessageType messageType = (MessageType)atoi(&header);
+    MessageType messageType = (MessageType)atoi(header);
 
     switch (messageType)
     {
+    case MessageType::FileInfo:
+    {
+        std::string format = "YYYY-MM-DD HH:mm:ss";
+        int size = format.length();
+        int spacer = size + 1;
+
+        time_t mtime = toTimeT(data.substr(0 * spacer, size));
+        time_t atime = toTimeT(data.substr(1 * spacer, size));
+        time_t ctime = toTimeT(data.substr(2 * spacer, size));
+        std::string filename = data.substr(3 * spacer);
+        return Message::FileInfo(filename, mtime, atime, ctime);
+    }
+
     case MessageType::Start:
     case MessageType::EndCommand:
+    case MessageType::ListServerCommand:
     {
         return Message(messageType);
     }
@@ -161,9 +186,18 @@ std::string Message::toPacket()
         packet << this->data;
         break;
 
-    case MessageType::EndCommand:
     case MessageType::Start:
+    case MessageType::EndCommand:
+    case MessageType::ListServerCommand:
     case MessageType::InvalidMessage:
+        break;
+
+    case MessageType::FileInfo:
+        packet
+            << toString(this->mtime) << ":"
+            << toString(this->atime) << ":"
+            << toString(this->ctime) << ":"
+            << this->filename;
         break;
     }
 

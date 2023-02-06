@@ -12,6 +12,8 @@ enum MessageType
     DownloadCommand,
     DeleteCommand,
     EndCommand,
+    ListServerCommand,
+    FileInfo,
     DataMessage,
     Response,
     Start,
@@ -42,12 +44,18 @@ public:
     std::string username;
     int socket;
 
+    time_t mtime;
+    time_t atime;
+    time_t ctime;
+
     static Message Empty();
     static Message UploadCommand(std::string filename);
     static Message DownloadCommand(std::string filename);
     static Message DeleteCommand(std::string filename);
     static Message Login(std::string username);
     static Message EndCommand();
+    static Message ListServerCommand();
+    static Message FileInfo(std::string filename, time_t mtime, time_t atime, time_t ctime);
     static Message Response(ResponseType type);
     static Message Start();
     static Message DataMessage(std::string data);

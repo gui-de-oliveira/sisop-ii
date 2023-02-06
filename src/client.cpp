@@ -5,6 +5,7 @@
 #include <fstream>
 
 #include "libs/message.h"
+#include "libs/helpers.h"
 
 using namespace std;
 
@@ -135,12 +136,53 @@ void deleteCommand(int socket, string filename)
     std::cout << Color::green << "File deleted succesfully!" << Color::reset << std::endl;
 }
 
+void listServerCommand(int socket)
+{
+    Message message = Message::ListServerCommand().send(socket);
+
+    if (!message.isOk())
+    {
+        message.panic();
+        return;
+    }
+
+    message = message.Reply(Message::Start());
+
+    std::cout
+        << "filename\t"
+        << "mtime\t"
+        << "atime\t"
+        << "ctime"
+        << endl;
+
+    while (message.type != MessageType::EndCommand)
+    {
+        if (message.type != MessageType::FileInfo)
+        {
+            message.panic();
+            return;
+        }
+
+        std::cout
+            << message.filename << "\t"
+            << toString(message.mtime) << "\t"
+            << toString(message.atime) << "\t"
+            << toString(message.ctime)
+            << endl;
+
+        message = message.Reply(Message::Response(ResponseType::Ok));
+    }
+
+    message.Reply(Message::Response(ResponseType::Ok), false);
+}
+
 enum CommandType
 {
     InvalidCommand,
     Upload,
     Download,
     Delete,
+    ListServer,
 };
 
 class Command
@@ -180,6 +222,11 @@ public:
         if (startsWith("delete"))
         {
             return Command(CommandType::Delete, parameter);
+        }
+
+        if (startsWith("list_server"))
+        {
+            return Command(CommandType::ListServer, parameter);
         }
 
         return Command(CommandType::InvalidCommand, input);
@@ -255,9 +302,17 @@ int main(int argc, char *argv[])
             continue;
         }
 
+        // # delete <filename.ext> Exclui o arquivo <filename.ext> de “sync_dir”.
         if (command.type == CommandType::Delete)
         {
             deleteCommand(socket, command.parameter);
+            continue;
+        }
+
+        // #list_server Lista os arquivos salvos no servidor associados ao usuário.
+        if (command.type == CommandType::ListServer)
+        {
+            listServerCommand(socket);
             continue;
         }
 

@@ -10,7 +10,8 @@ enum FileActionType
 {
     Upload,
     Read,
-    Delete
+    Delete,
+    ListServer
 };
 
 class FileAction

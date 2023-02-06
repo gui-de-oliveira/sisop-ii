@@ -59,6 +59,8 @@
         "typeinfo": "cpp",
         "list": "cpp",
         "queue": "cpp",
-        "map": "cpp"
+        "map": "cpp",
+        "iomanip": "cpp",
+        "codecvt": "cpp"
     }
 }
