@@ -17,10 +17,10 @@ class ServerConnection
 public:
     int port;
     char *serverIpAddress;
-    char *username;
+    std::string username;
     ServerConnection(){};
 
-    ServerConnection(char *serverIpAddress, int port, char *username)
+    ServerConnection(char *serverIpAddress, int port, std::string username)
     {
         this->serverIpAddress = serverIpAddress;
         this->port = port;
@@ -240,15 +240,6 @@ public:
             { process(); });
     }
 };
-
-void startSynchronization(ServerConnection serverConnection, std::string username)
-{
-    std::filesystem::remove_all("sync_dir_" + username);
-    std::filesystem::create_directory("sync_dir_" + username);
-
-    LocalFileStatesManager manager(serverConnection);
-    ServerSynchronization synch(serverConnection, &manager);
-}
 
 void uploadCommand(int socket, string path)
 {
@@ -491,17 +482,21 @@ int main(int argc, char *argv[])
 
     // onde <username> representa o identificador do usuário, e <server_ip_address>
     // e <port> representam o endereço IP do servidor e a porta, respectivamente.
-    char *username = argv[1];
+    std::string username = argv[1];
     char *serverIpAddress = argv[2];
     int port = atoi(argv[3]);
 
-    ServerConnection serverConnection(serverIpAddress, port, username);
+    ServerConnection serverConnection(serverIpAddress, port, username.c_str());
 
     std::cout << "Connecting to server..." << std::endl;
     auto message = serverConnection.connect();
     std::cout << "CONNECTED!" << std::endl;
 
-    startSynchronization(serverConnection, username);
+    std::filesystem::remove_all("sync_dir_" + username);
+    std::filesystem::create_directory("sync_dir_" + username);
+
+    LocalFileStatesManager manager(serverConnection);
+    ServerSynchronization synch(serverConnection, &manager);
 
     // Após iniciar uma sessão, o usuário deve ser capaz de arrastar arquivos para o diretório ‘sync_dir’
     // utilizando o gerenciador de arquivos do sistema operacional, e ter esses arquivos sincronizados

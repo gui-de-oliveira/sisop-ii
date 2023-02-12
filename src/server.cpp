@@ -58,15 +58,25 @@ void processQueue(Singleton *singleton)
         FileAction fileAction = result.value();
         std::cout << "BEGIN: " << toString(fileAction) << endl;
 
-        Callback onComplete = [fileAction, singleton]()
-        {
-            std::cout << "END: " << toString(fileAction) << endl;
-            singleton->start(fileAction.session);
-        };
-
         string username = fileAction.session.username;
 
         UserFiles *userFiles = singleton->fileManager->getFiles(username);
+
+        std::list<int> subscribers = *(userFiles->subscribers);
+        Callback onComplete = [fileAction, singleton, subscribers]()
+        {
+            std::cout << "END: " << toString(fileAction) << endl;
+            singleton->start(fileAction.session);
+
+            if (fileAction.type == FileActionType::Delete ||
+                fileAction.type == FileActionType::Upload)
+            {
+                for (auto const &subscriber : subscribers)
+                {
+                    Message::FileUpdate(fileAction.filename, fileAction.timestamp).send(subscriber);
+                }
+            }
+        };
 
         if (fileAction.type == FileActionType::Subscribe)
         {
