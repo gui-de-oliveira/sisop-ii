@@ -183,6 +183,9 @@ enum CommandType
     Download,
     Delete,
     ListServer,
+    ListClient,
+    GetSyncDir,
+    Exit
 };
 
 class Command
@@ -227,6 +230,21 @@ public:
         if (startsWith("list_server"))
         {
             return Command(CommandType::ListServer, parameter);
+        }
+
+        if (startsWith("list_client"))
+        {
+            return Command(CommandType::ListClient, parameter);
+        }
+
+        if (startsWith("get_sync_dir"))
+        {
+            return Command(CommandType::GetSyncDir, parameter);
+        }
+
+        if (startsWith("exit"))
+        {
+            return Command(CommandType::Exit, parameter);
         }
 
         return Command(CommandType::InvalidCommand, input);
@@ -313,6 +331,27 @@ int main(int argc, char *argv[])
         if (command.type == CommandType::ListServer)
         {
             listServerCommand(socket);
+            continue;
+        }
+
+        // # list_client Lista os arquivos salvos no diretório “sync_dir”
+        if (command.type == CommandType::ListClient)
+        {
+            // TODO
+            continue;
+        }
+
+        // # get_sync_dir Cria o diretório “sync_dir” e inicia as atividades de sincronização
+        if (command.type == CommandType::GetSyncDir)
+        {
+            // TODO
+            continue;
+        }
+
+        // # exit Fecha a sessão com o servidor
+        if (command.type == CommandType::Exit)
+        {
+            // TODO
             continue;
         }
 
