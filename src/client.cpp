@@ -351,8 +351,12 @@ int main(int argc, char *argv[])
         // # exit Fecha a sessão com o servidor
         if (command.type == CommandType::Exit)
         {
-            // TODO
-            continue;
+            std::cout << "Fechando conexão com o servidor..." << std::endl;
+            close(socket);
+            std::cout << Color::green << "OK!" << Color::reset << std::endl;
+
+            std::cout << "Bye! 🐸" << std::endl;
+            return 1;
         }
 
         cout << Color::red << "Invalid command." << Color::reset << endl;
