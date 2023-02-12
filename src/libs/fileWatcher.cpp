@@ -26,7 +26,7 @@ void watch(
         exit(-1);
     }
 
-    int watchId = inotify_add_watch(inotifyId, path.c_str(), IN_MODIFY | IN_CREATE | IN_DELETE);
+    int watchId = inotify_add_watch(inotifyId, path.c_str(), IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVE | IN_MOVE_SELF);
 
     while (true)
     {
@@ -72,6 +72,18 @@ void watch(
             if (event->mask & IN_MODIFY)
             {
                 onFileModified(filename);
+            }
+
+            // For simplicity, I just delete and recreate files when moving.
+
+            if (event->mask & IN_MOVED_FROM)
+            {
+                onFileDeleted(filename);
+            }
+
+            if (event->mask & IN_MOVED_TO)
+            {
+                onFileCreated(filename);
             }
         }
     }
