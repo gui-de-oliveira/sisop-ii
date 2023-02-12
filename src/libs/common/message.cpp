@@ -368,3 +368,24 @@ void sendFile(Session session, string path)
     message.Reply(Message::EndCommand());
     file.close();
 }
+
+ServerConnection::ServerConnection(char *serverIpAddress, int port, std::string username)
+{
+    this->serverIpAddress = serverIpAddress;
+    this->port = port;
+    this->username = username;
+}
+
+Message ServerConnection::connect()
+{
+    int socket = connectToServer(serverIpAddress, port);
+    auto message = Message::Login(username).send(socket);
+
+    if (!message.isOk())
+    {
+        message.panic();
+        throw new std::exception();
+    }
+
+    return message;
+}

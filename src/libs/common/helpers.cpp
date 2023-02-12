@@ -1,10 +1,11 @@
-#include "helpers.h"
 #include <future>
 #include <sys/stat.h>
 #include <time.h>
 #include <iomanip>
 
 using namespace std;
+
+#include "helpers.h"
 
 future<void> *allocateFunction()
 {
@@ -47,4 +48,25 @@ std::string toString(time_t value)
     std::ostringstream stream;
     stream << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
     return stream.str();
+}
+
+std::string extractFilenameFromPath(std::string path)
+{
+    bool hasDirectory = path.find("/") != -1;
+
+    if (!hasDirectory)
+    {
+        return path;
+    }
+
+    int lastDirectory = path.rfind("/");
+    return path.substr(lastDirectory + 1);
+}
+
+bool isFilenameValid(string filename)
+{
+    if (filename.length() <= 0)
+        return false;
+
+    return true;
 }

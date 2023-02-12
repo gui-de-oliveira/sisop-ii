@@ -108,3 +108,7 @@ time_t getModificationTime(std::string path);
 
 time_t toTimeT(std::string value);
 std::string toString(time_t value);
+
+std::string extractFilenameFromPath(std::string path);
+
+bool isFilenameValid(string filename);

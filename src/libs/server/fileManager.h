@@ -3,8 +3,8 @@
 #include <filesystem>
 #include <string.h>
 
-#include "helpers.h"
-#include "message.h"
+#include "../common/helpers.h"
+#include "../common/message.h"
 
 enum FileActionType
 {

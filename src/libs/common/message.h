@@ -83,3 +83,15 @@ Message listenMessage(int socket);
 void deleteFile(Session session, std::string path);
 void downloadFile(Session session, std::string path);
 void sendFile(Session session, std::string path);
+
+class ServerConnection
+{
+public:
+    int port;
+    char *serverIpAddress;
+    std::string username;
+    ServerConnection(){};
+
+    ServerConnection(char *serverIpAddress, int port, std::string username);
+    Message connect();
+};
