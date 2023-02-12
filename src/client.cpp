@@ -241,6 +241,27 @@ public:
     }
 };
 
+class LocalSynchronization
+{
+    LocalFileStatesManager *localManager;
+
+    std::future<void> processor;
+
+    void process(){
+
+    };
+
+public:
+    LocalSynchronization(LocalFileStatesManager *manager)
+    {
+        this->localManager = manager;
+        this->processor = async(
+            launch::async,
+            [this]
+            { process(); });
+    }
+};
+
 void uploadCommand(int socket, string path)
 {
 
