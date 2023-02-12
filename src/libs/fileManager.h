@@ -9,6 +9,7 @@
 enum FileActionType
 {
     Upload,
+    Subscribe,
     Read,
     Delete,
     ListServer
@@ -70,6 +71,8 @@ class UserFiles
 
 public:
     std::map<std::string, FileState> fileStatesByFilename;
+    std::list<int> *subscribers = new std::list<int>();
+
     FileState get(std::string filename)
     {
         if (fileStatesByFilename.find(filename) == fileStatesByFilename.end())

@@ -5,11 +5,10 @@
 #include <fstream>
 #include <map>
 #include <filesystem>
+#include <thread>
 
 #include "libs/message.h"
-
 #include "libs/helpers.h"
-#include <thread>
 
 using namespace std;
 
@@ -30,23 +29,14 @@ public:
 
     Message connect()
     {
-        cout << "Connecting to server... " << endl;
         int socket = connectToServer(serverIpAddress, port);
-        cout << Color::green << "OK!" << Color::reset << endl;
-
-        std::cout << "Connected with socket " << socket << "." << endl;
-
-        cout << "Logging as " << username << "... " << endl;
         auto message = Message::Login(username).send(socket);
 
         if (!message.isOk())
         {
-            cout << Color::red << "FAIL!" << Color::reset << endl;
             message.panic();
             throw new std::exception();
         }
-
-        cout << Color::green << "OK!" << Color::reset << endl;
 
         return message;
     }
@@ -65,6 +55,14 @@ public:
     FileOperation(FileOperationTag tag)
     {
         this->tag = tag;
+    }
+
+    static FileOperation ServerUpdate(std::string fileName, time_t timestamp)
+    {
+        FileOperation operation(FileOperationTag::ServerUpdate);
+        operation.fileName = fileName;
+        operation.timestamp = timestamp;
+        return operation;
     }
 
     FileOperationTag tag;
@@ -124,6 +122,7 @@ class LocalFileStatesManager : public QueueProcessor<FileOperation>
 
     void processEntry(FileOperation entry)
     {
+        std::cout << "Operation " << entry.tag << " on file " << entry.fileName << std::endl;
         auto fileState = getFileState(entry.fileName);
 
         if (entry.tag == FileOperationTag::ServerUpdate)
@@ -184,17 +183,71 @@ std::string extractFilenameFromPath(std::string path)
     return path.substr(lastDirectory + 1);
 }
 
+class ServerSynchronization
+{
+    ServerConnection serverConnection;
+    LocalFileStatesManager *localManager;
+
+    std::future<void> processor;
+
+    void process()
+    {
+        auto message = serverConnection.connect();
+
+        message = message.Reply(Message::SubscribeUpdates());
+
+        if (!message.isOk())
+        {
+            std::cout << "ERROR ON SUBSCRIBE TO SERVER" << std::endl;
+            message.panic();
+            exit(-1);
+        }
+
+        message = message.Reply(Message::Start());
+
+        while (true)
+        {
+            if (message.type == MessageType::EndCommand)
+            {
+                break;
+            }
+
+            if (message.type == MessageType::FileUpdate)
+            {
+                std::cout << Color::blue << "Update received on file " << message.filename << Color::reset << std::endl;
+                FileOperation operation = FileOperation::ServerUpdate(message.filename, message.timestamp);
+                localManager->queue(operation);
+                message = message.Reply(Message::Response(ResponseType::Ok));
+                continue;
+            }
+
+            message.panic();
+            break;
+        }
+
+        std::cout << "Server ended connection with subscribe" << std::endl;
+        close(message.socket);
+    };
+
+public:
+    ServerSynchronization(ServerConnection server, LocalFileStatesManager *manager)
+    {
+        this->serverConnection = server;
+        this->localManager = manager;
+        this->processor = async(
+            launch::async,
+            [this]
+            { process(); });
+    }
+};
+
 void startSynchronization(ServerConnection serverConnection, std::string username)
 {
     std::filesystem::remove_all("sync_dir_" + username);
     std::filesystem::create_directory("sync_dir_" + username);
 
-    sleep(2);
     LocalFileStatesManager manager(serverConnection);
-
-    auto _operation = FileOperation(FileOperationTag::ServerUpdate);
-    _operation.fileName = "foobar.txt";
-    manager.queue(_operation);
+    ServerSynchronization synch(serverConnection, &manager);
 }
 
 void uploadCommand(int socket, string path)
@@ -444,7 +497,9 @@ int main(int argc, char *argv[])
 
     ServerConnection serverConnection(serverIpAddress, port, username);
 
+    std::cout << "Connecting to server..." << std::endl;
     auto message = serverConnection.connect();
+    std::cout << "CONNECTED!" << std::endl;
 
     startSynchronization(serverConnection, username);
 

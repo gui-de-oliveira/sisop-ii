@@ -67,6 +67,48 @@ void processQueue(Singleton *singleton)
         string username = fileAction.session.username;
 
         UserFiles *userFiles = singleton->fileManager->getFiles(username);
+
+        if (fileAction.type == FileActionType::Subscribe)
+        {
+            list<Message> fileUpdates;
+
+            for (auto const &item : userFiles->fileStatesByFilename)
+            {
+                auto name = item.first;
+                auto state = item.second;
+                fileUpdates.push_front(Message::FileUpdate(name, state.updated));
+            }
+
+            userFiles->subscribers->push_front(fileAction.session.socket);
+
+            auto sendFileUpdates = [fileAction, fileUpdates, onComplete]
+            {
+                auto message = Message::Response(ResponseType::Ok).send(fileAction.session.socket);
+
+                if (message.type != MessageType::Start)
+                {
+                    message.panic();
+                    return;
+                }
+
+                for (auto const &fileInfo : fileUpdates)
+                {
+                    message = message.Reply(fileInfo);
+
+                    if (!message.isOk())
+                    {
+                        message.panic();
+                        return;
+                    }
+                }
+            };
+
+            singleton->runner->queue(
+                [sendFileUpdates]
+                { sendFileUpdates(); });
+            continue;
+        }
+
         if (fileAction.type == FileActionType::ListServer)
         {
             list<Message> fileInfos;
@@ -173,18 +215,15 @@ int main(int argc, char *argv[])
         }
 
         login.Reply(Message::Response(ResponseType::Ok), false);
-        std::cout << "STEP" << std::endl;
 
         string username = login.username;
         string folder = "out/" + username + "/";
         mkdir(folder.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-        std::cout << "STEP" << std::endl;
 
         std::cout << "Client " << clientId << " logged in as " << username << std::endl;
         Session session(clientId, clientSocket, username);
 
         singleton.start(session);
-        std::cout << "STEP" << std::endl;
     }
 
     return 0;
@@ -200,6 +239,12 @@ void expectFileAction(Session session, ThreadSafeQueue<FileAction> *queue)
     {
         Message message = Message::Listen(session.socket);
         std::cout << clientName << " queued " << message.type << std::endl;
+
+        if (message.type == MessageType::SubscribeUpdates)
+        {
+            queue->queue(FileAction(session, "", FileActionType::Subscribe, message.timestamp));
+            return;
+        }
 
         if (message.type == MessageType::UploadCommand)
         {

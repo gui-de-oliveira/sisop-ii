@@ -24,6 +24,7 @@ Message::Message(MessageType type, std::string filename)
 Message Message::InvalidMessage() { return Message(MessageType::InvalidMessage); }
 Message Message::EndCommand() { return Message(MessageType::EndCommand); }
 Message Message::ListServerCommand() { return Message(MessageType::ListServerCommand); }
+Message Message::SubscribeUpdates() { return Message(MessageType::SubscribeUpdates); }
 Message Message::Start() { return Message(MessageType::Start); }
 Message Message::Empty() { return Message(MessageType::Empty); }
 
@@ -41,6 +42,14 @@ Message Message::FileInfo(std::string filename, time_t mtime, time_t atime, time
     message.mtime = mtime;
     message.atime = atime;
     message.ctime = ctime;
+    return message;
+}
+
+Message Message::FileUpdate(std::string filename, time_t timestamp)
+{
+    Message message(MessageType::FileUpdate);
+    message.filename = filename;
+    message.timestamp = timestamp;
     return message;
 }
 
@@ -100,9 +109,21 @@ Message Message::Parse(char *_buffer)
         return Message::FileInfo(filename, mtime, atime, ctime);
     }
 
+    case MessageType::FileUpdate:
+    {
+        std::string format = "YYYY-MM-DD HH:mm:ss";
+        int size = format.length();
+        int spacer = size + 1;
+
+        time_t timestamp = toTimeT(data.substr(0 * spacer, size));
+        std::string filename = data.substr(1 * spacer);
+        return Message::FileUpdate(filename, timestamp);
+    }
+
     case MessageType::Start:
     case MessageType::EndCommand:
     case MessageType::ListServerCommand:
+    case MessageType::SubscribeUpdates:
     {
         return Message(messageType);
     }
@@ -190,6 +211,13 @@ std::string Message::toPacket()
     case MessageType::EndCommand:
     case MessageType::ListServerCommand:
     case MessageType::InvalidMessage:
+    case MessageType::SubscribeUpdates:
+        break;
+
+    case MessageType::FileUpdate:
+        packet
+            << toString(this->timestamp) << ":"
+            << this->filename;
         break;
 
     case MessageType::FileInfo:

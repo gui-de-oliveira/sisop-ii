@@ -29,6 +29,8 @@ std::string toString(FileActionType type)
         return Color::green + "UPLOAD" + Color::reset;
     case FileActionType::ListServer:
         return Color::green + "LIST_SERVER" + Color::reset;
+    case FileActionType::Subscribe:
+        return Color::green + "SUBSCRIBE" + Color::reset;
     }
 
     throw new std::exception;
