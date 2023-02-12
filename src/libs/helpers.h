@@ -1,6 +1,8 @@
 #include <future>
 #include <list>
 #include <unistd.h>
+#include <iostream>
+#include <iostream>
 
 using namespace std;
 
@@ -41,10 +43,10 @@ protected:
     // TODO: check asyncs running and terminate stopped
 
 public:
-    void queue(std::future<void> running)
+    void queue(std::function<void()> function)
     {
         future<void> *execution = allocateFunction();
-        execution = &running;
+        *execution = async(launch::async, function);
         asyncs.queue(execution);
     }
 };

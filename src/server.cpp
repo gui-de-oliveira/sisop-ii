@@ -37,7 +37,8 @@ public:
     void start(Session session)
     {
         runner->queue(
-            async(launch::async, expectFileAction, session, fileQueue));
+            [session, this]
+            { expectFileAction(session, fileQueue); });
     }
 };
 
@@ -100,7 +101,9 @@ void processQueue(Singleton *singleton)
                 onComplete();
             };
 
-            singleton->runner->queue(async(launch::async, sendFileInfos));
+            singleton->runner->queue(
+                [sendFileInfos]
+                { sendFileInfos(); });
             continue;
         }
 
@@ -141,6 +144,7 @@ int main(int argc, char *argv[])
     int clientCounter = 0;
     while (true)
     {
+        std::cout << Color::yellow << "Awaiting new connections: " << Color::reset << std::endl;
         int clientSocket = awaitConnection(serverSocket);
         int clientId = clientCounter++;
 
