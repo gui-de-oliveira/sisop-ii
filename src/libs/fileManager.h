@@ -146,7 +146,7 @@ public:
 };
 
 std::string toString(FileActionType type);
-std::string toString(FileAction fileAction);
+std::string fileActionToString(FileAction fileAction);
 std::string toString(FileState fileState);
 
 FileState getNextState(FileState lastFileState, FileAction fileAction, Callback onComplete);

@@ -36,7 +36,7 @@ std::string toString(FileActionType type)
     throw new std::exception;
 }
 
-std::string toString(FileAction fileAction)
+std::string fileActionToString(FileAction fileAction)
 {
     return toString(fileAction.type) + " OF " +
            fileAction.filename +

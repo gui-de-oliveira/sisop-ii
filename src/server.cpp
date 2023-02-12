@@ -56,7 +56,7 @@ void processQueue(Singleton *singleton)
         }
 
         FileAction fileAction = result.value();
-        std::cout << "BEGIN: " << toString(fileAction) << endl;
+        std::cout << "BEGIN: " << fileActionToString(fileAction) << endl;
 
         string username = fileAction.session.username;
 
@@ -65,7 +65,7 @@ void processQueue(Singleton *singleton)
         std::list<int> subscribers = *(userFiles->subscribers);
         Callback onComplete = [fileAction, singleton, subscribers]()
         {
-            std::cout << "END: " << toString(fileAction) << endl;
+            std::cout << "END: " << fileActionToString(fileAction) << endl;
             singleton->start(fileAction.session);
 
             if (fileAction.type == FileActionType::Delete ||

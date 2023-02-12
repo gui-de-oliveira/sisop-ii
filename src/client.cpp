@@ -9,6 +9,7 @@
 
 #include "libs/message.h"
 #include "libs/helpers.h"
+#include "libs/fileWatcher.h"
 
 using namespace std;
 
@@ -42,19 +43,76 @@ public:
     }
 };
 
+enum FileAction
+{
+    Created,
+    Modified,
+    Deleted
+};
+
 enum FileOperationTag
 {
     ServerUpdate,
     DownloadComplete,
     FailedDownload,
+    LocalUpdate
 };
+
+string fileActionTagToString(FileAction tag)
+{
+    switch (tag)
+    {
+    case FileAction::Created:
+        return "Created";
+    case FileAction::Modified:
+        return "Modified";
+    case FileAction::Deleted:
+        return "Deleted";
+
+    default:
+        return "INVALID_FILE_ACTION";
+    }
+}
+
+string fileOperationTagToString(FileOperationTag tag)
+{
+    switch (tag)
+    {
+    case FileOperationTag::ServerUpdate:
+        return "ServerUpdate";
+    case FileOperationTag::DownloadComplete:
+        return "DownloadComplete";
+    case FileOperationTag::FailedDownload:
+        return "FailedDownload";
+    case FileOperationTag::LocalUpdate:
+        return "LocalUpdate";
+
+    default:
+        return "INVALID_OPERATION_TAG";
+    }
+}
 
 class FileOperation
 {
 public:
+    FileOperationTag tag;
+
+    std::string fileName;
+    time_t timestamp;
+    FileAction fileAction;
+
     FileOperation(FileOperationTag tag)
     {
         this->tag = tag;
+        this->timestamp = std::time(nullptr);
+    }
+
+    static FileOperation LocalUpdate(std::string fileName, FileAction fileAction)
+    {
+        FileOperation operation(FileOperationTag::LocalUpdate);
+        operation.fileName = fileName;
+        operation.fileAction = fileAction;
+        return operation;
     }
 
     static FileOperation ServerUpdate(std::string fileName, time_t timestamp)
@@ -64,12 +122,22 @@ public:
         operation.timestamp = timestamp;
         return operation;
     }
-
-    FileOperationTag tag;
-
-    std::string fileName;
-    time_t timestamp;
 };
+
+string toString(FileOperation operation)
+{
+    std::ostringstream stream;
+    std::string timestamp = "[" + toString(operation.timestamp).substr(11, 8) + "]";
+
+    stream << timestamp << " " << fileOperationTagToString(operation.tag) << " " << operation.fileName;
+
+    if (operation.tag == FileOperationTag::LocalUpdate)
+    {
+        stream << " " << fileActionTagToString(operation.fileAction);
+    }
+
+    return stream.str();
+}
 
 enum FileStateTag
 {
@@ -122,7 +190,7 @@ class LocalFileStatesManager : public QueueProcessor<FileOperation>
 
     void processEntry(FileOperation entry)
     {
-        std::cout << "Operation " << entry.tag << " on file " << entry.fileName << std::endl;
+        std::cout << "Execution operation: " << toString(entry) << std::endl;
         auto fileState = getFileState(entry.fileName);
 
         if (entry.tag == FileOperationTag::ServerUpdate)
@@ -245,20 +313,10 @@ class LocalSynchronization
 {
     LocalFileStatesManager *localManager;
 
-    std::future<void> processor;
-
-    void process(){
-
-    };
-
 public:
-    LocalSynchronization(LocalFileStatesManager *manager)
+    LocalSynchronization(string username, LocalFileStatesManager *manager)
     {
         this->localManager = manager;
-        this->processor = async(
-            launch::async,
-            [this]
-            { process(); });
     }
 };
 
@@ -518,6 +576,15 @@ int main(int argc, char *argv[])
 
     LocalFileStatesManager manager(serverConnection);
     ServerSynchronization synch(serverConnection, &manager);
+
+    auto onCreate = [&manager](string filename)
+    { manager.queue(FileOperation::LocalUpdate(filename, FileAction::Created)); };
+    auto onModify = [&manager](string filename)
+    { manager.queue(FileOperation::LocalUpdate(filename, FileAction::Modified)); };
+    auto onDelete = [&manager](string filename)
+    { manager.queue(FileOperation::LocalUpdate(filename, FileAction::Deleted)); };
+
+    auto watchFileChanges = async(launch::async, watch, "sync_dir_" + username, onCreate, onModify, onDelete);
 
     // Após iniciar uma sessão, o usuário deve ser capaz de arrastar arquivos para o diretório ‘sync_dir’
     // utilizando o gerenciador de arquivos do sistema operacional, e ter esses arquivos sincronizados
