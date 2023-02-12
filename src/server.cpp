@@ -12,6 +12,7 @@
 #include <time.h>
 #include <algorithm>
 #include <iterator>
+#include <optional>
 
 #include "libs/fileManager.h"
 
@@ -46,7 +47,15 @@ void processQueue(Singleton *singleton)
 {
     while (true)
     {
-        FileAction fileAction = singleton->fileQueue->pop();
+        std::optional<FileAction> result = singleton->fileQueue->pop();
+
+        if (!result.has_value())
+        {
+            sleep(1);
+            continue;
+        }
+
+        FileAction fileAction = result.value();
         std::cout << "BEGIN: " << toString(fileAction) << endl;
 
         Callback onComplete = [fileAction, singleton]()
@@ -148,7 +157,10 @@ int main(int argc, char *argv[])
         int clientSocket = awaitConnection(serverSocket);
         int clientId = clientCounter++;
 
-        std::cout << Color::blue << "New client connected. Id: " << clientId << Color::reset << std::endl;
+        std::cout << Color::blue
+                  << "New client connected on socket " << clientSocket
+                  << ". Id: " << clientId
+                  << Color::reset << std::endl;
 
         auto login = Message::Listen(clientSocket);
 
@@ -161,15 +173,18 @@ int main(int argc, char *argv[])
         }
 
         login.Reply(Message::Response(ResponseType::Ok), false);
+        std::cout << "STEP" << std::endl;
 
         string username = login.username;
         string folder = "out/" + username + "/";
         mkdir(folder.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        std::cout << "STEP" << std::endl;
 
         std::cout << "Client " << clientId << " logged in as " << username << std::endl;
         Session session(clientId, clientSocket, username);
 
         singleton.start(session);
+        std::cout << "STEP" << std::endl;
     }
 
     return 0;

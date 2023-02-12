@@ -1,8 +1,10 @@
 #include <future>
 #include <list>
 #include <unistd.h>
+#include <optional>
+#include <functional>
 #include <iostream>
-#include <iostream>
+#include <stdio.h>
 
 using namespace std;
 
@@ -20,16 +22,65 @@ public:
         queued.push_back(data);
     }
 
-    T pop()
+    std::optional<T> pop()
     {
-        while (queued.empty())
+        if (queued.empty())
         {
-            sleep(1);
+            return std::nullopt;
         }
 
         T data = queued.front();
         queued.pop_front();
         return data;
+    }
+};
+
+template <typename T>
+class QueueProcessor
+{
+    ThreadSafeQueue<T> _queue;
+
+    bool isExiting = false;
+
+    void processQueue()
+    {
+        while (!isExiting)
+        {
+            auto result = _queue.pop();
+
+            if (!result.has_value())
+            {
+                sleep(1);
+                continue;
+            }
+
+            auto value = result.value();
+            processEntry(value);
+        }
+    }
+
+    std::future<void> processor;
+    std::function<void(T)> processEntry;
+
+public:
+    QueueProcessor(std::function<void(T)> processEntry)
+    {
+        this->processEntry = processEntry;
+        this->processor = std::async(
+            launch::async,
+            [this]
+            { this->processQueue(); });
+    }
+
+    void stop()
+    {
+        this->isExiting = true;
+        processor.get();
+    }
+
+    void queue(T request)
+    {
+        _queue.queue(request);
     }
 };
 

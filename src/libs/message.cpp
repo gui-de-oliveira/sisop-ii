@@ -291,7 +291,6 @@ void downloadFile(Session session, string path)
     {
         if (message.type == MessageType::DataMessage)
         {
-            std::cout << session.username << ": [data]" << std::endl;
             file << message.data;
             message = message.Reply(Message::Response(ResponseType::Ok));
             continue;
@@ -299,7 +298,6 @@ void downloadFile(Session session, string path)
 
         if (message.type == MessageType::EndCommand)
         {
-            std::cout << session.username << ": [end]" << std::endl;
             message.Reply(Message::Response(ResponseType::Ok), false);
             break;
         }

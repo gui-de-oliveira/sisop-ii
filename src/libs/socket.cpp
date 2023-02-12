@@ -32,6 +32,7 @@ void clearBuffer(char (*buffer)[MAX_BUFFER_SIZE])
 bool listenPacket(char (*buffer)[MAX_BUFFER_SIZE], int socketDescriptor)
 {
     clearBuffer(buffer);
+
     int bytesRead = recv(socketDescriptor, (char *)buffer, sizeof(*buffer), 0);
 
     bool errorOnRead = bytesRead == -1;
@@ -70,22 +71,22 @@ void awaitOk(int socket)
 
 int connectToServer(char *address, int port)
 {
-    sockaddr_in sendSockAddr;
-    bzero((char *)&sendSockAddr, sizeof(sendSockAddr));
+    sockaddr_in serverAddress;
+    bzero((char *)&serverAddress, sizeof(serverAddress));
 
-    sendSockAddr.sin_family = AF_INET;
-    sendSockAddr.sin_port = htons(port);
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_port = htons(port);
 
     struct hostent *host = gethostbyname(address);
-    sendSockAddr.sin_addr.s_addr =
+    serverAddress.sin_addr.s_addr =
         inet_addr(inet_ntoa(*(struct in_addr *)*host->h_addr_list));
 
-    int connection = socket(AF_INET, SOCK_STREAM, 0);
+    int connectedSocket = socket(AF_INET, SOCK_STREAM, 0);
 
     int status = connect(
-        connection,
-        (sockaddr *)&sendSockAddr,
-        sizeof(sendSockAddr));
+        connectedSocket,
+        (sockaddr *)&serverAddress,
+        sizeof(serverAddress));
 
     if (status < 0)
     {
@@ -93,7 +94,7 @@ int connectToServer(char *address, int port)
         exit(-1);
     }
 
-    return connection;
+    return connectedSocket;
 }
 
 // = SERVER METHODS ========================================================================
@@ -140,15 +141,15 @@ int awaitConnection(int serverSocketDescriptor)
         exit(0);
     }
 
-    sockaddr_in newSockAddr;
-    socklen_t newSockAddrSize = sizeof(newSockAddr);
+    sockaddr_in clientAddress;
+    socklen_t clientAddressSize = sizeof(clientAddress);
 
-    int clientSocketDescriptor = accept(serverSocketDescriptor, (sockaddr *)&newSockAddr, &newSockAddrSize);
-    if (clientSocketDescriptor < 0)
+    int clientSocket = accept(serverSocketDescriptor, (sockaddr *)&clientAddress, &clientAddressSize);
+    if (clientSocket < 0)
     {
         std::cerr << "Error accepting request from client!" << std::endl;
         exit(1);
     }
 
-    return clientSocketDescriptor;
+    return clientSocket;
 }

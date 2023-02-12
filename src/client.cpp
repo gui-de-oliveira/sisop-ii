@@ -3,11 +3,173 @@
 #include <string>
 #include <string.h>
 #include <fstream>
+#include <map>
+#include <filesystem>
 
 #include "libs/message.h"
+
 #include "libs/helpers.h"
+#include <thread>
 
 using namespace std;
+
+class ServerConnection
+{
+public:
+    int port;
+    char *serverIpAddress;
+    char *username;
+    ServerConnection(){};
+
+    ServerConnection(char *serverIpAddress, int port, char *username)
+    {
+        this->serverIpAddress = serverIpAddress;
+        this->port = port;
+        this->username = username;
+    }
+
+    Message connect()
+    {
+        cout << "Connecting to server... " << endl;
+        int socket = connectToServer(serverIpAddress, port);
+        cout << Color::green << "OK!" << Color::reset << endl;
+
+        std::cout << "Connected with socket " << socket << "." << endl;
+
+        cout << "Logging as " << username << "... " << endl;
+        auto message = Message::Login(username).send(socket);
+
+        if (!message.isOk())
+        {
+            cout << Color::red << "FAIL!" << Color::reset << endl;
+            message.panic();
+            throw new std::exception();
+        }
+
+        cout << Color::green << "OK!" << Color::reset << endl;
+
+        return message;
+    }
+};
+
+enum FileOperationTag
+{
+    ServerUpdate,
+    DownloadComplete,
+    FailedDownload,
+};
+
+class FileOperation
+{
+public:
+    FileOperation(FileOperationTag tag)
+    {
+        this->tag = tag;
+    }
+
+    FileOperationTag tag;
+
+    std::string fileName;
+    time_t timestamp;
+};
+
+enum FileStateTag
+{
+    Inexistent,
+    Downloading,
+    Ready
+};
+
+class FileState
+{
+    FileState(FileStateTag tag)
+    {
+        this->tag = tag;
+    }
+
+public:
+    FileStateTag tag;
+
+    FileState()
+    {
+        this->tag = FileStateTag::Inexistent;
+    }
+
+    static FileState Inexistent()
+    {
+        return FileState(FileStateTag::Inexistent);
+    }
+};
+
+class LocalFileStatesManager : public QueueProcessor<FileOperation>
+{
+    ServerConnection serverConnection;
+    std::map<std::string, FileState> fileStatesByFilename;
+    AsyncRunner asyncs;
+
+    FileState getFileState(std::string filename)
+    {
+        if (fileStatesByFilename.find(filename) == fileStatesByFilename.end())
+        {
+            return FileState::Inexistent();
+        }
+
+        return fileStatesByFilename[filename];
+    }
+
+    void setFileState(std::string filename, FileState fileState)
+    {
+        fileStatesByFilename[filename] = fileState;
+    }
+
+    void processEntry(FileOperation entry)
+    {
+        auto fileState = getFileState(entry.fileName);
+
+        if (entry.tag == FileOperationTag::ServerUpdate)
+        {
+            if (fileState.tag == FileStateTag::Inexistent)
+            {
+                fileState.tag = FileStateTag::Downloading;
+
+                asyncs.queue(
+                    [this, entry]
+                    {
+                        auto message = serverConnection.connect();
+
+                        message = message.Reply(Message::DownloadCommand(entry.fileName));
+
+                        if (!message.isOk())
+                        {
+                            message.panic();
+                            FileOperation operation(FileOperationTag::FailedDownload);
+                            queue(operation);
+                            return;
+                        }
+
+                        std::string user = serverConnection.username;
+                        std::string path = "sync_dir_" + user + "/" + entry.fileName;
+
+                        downloadFile(Session(0, message.socket, ""), path);
+
+                        FileOperation operation(FileOperationTag::DownloadComplete);
+                        queue(operation);
+                    });
+
+                setFileState(entry.fileName, fileState);
+            }
+        }
+    }
+
+public:
+    LocalFileStatesManager(ServerConnection serverConnection)
+        : QueueProcessor<FileOperation>(
+              [this](FileOperation operation)
+              { processEntry(operation); })
+    {
+        this->serverConnection = serverConnection;
+    }
+};
 
 std::string extractFilenameFromPath(std::string path)
 {
@@ -20,6 +182,19 @@ std::string extractFilenameFromPath(std::string path)
 
     int lastDirectory = path.rfind("/");
     return path.substr(lastDirectory + 1);
+}
+
+void startSynchronization(ServerConnection serverConnection, std::string username)
+{
+    std::filesystem::remove_all("sync_dir_" + username);
+    std::filesystem::create_directory("sync_dir_" + username);
+
+    sleep(2);
+    LocalFileStatesManager manager(serverConnection);
+
+    auto _operation = FileOperation(FileOperationTag::ServerUpdate);
+    _operation.fileName = "foobar.txt";
+    manager.queue(_operation);
 }
 
 void uploadCommand(int socket, string path)
@@ -267,18 +442,11 @@ int main(int argc, char *argv[])
     char *serverIpAddress = argv[2];
     int port = atoi(argv[3]);
 
-    cout << "Connecting to server... ";
-    int socket = connectToServer(serverIpAddress, port);
-    cout << "OK!" << endl;
+    ServerConnection serverConnection(serverIpAddress, port, username);
 
-    cout << "Logging as " << username << "... ";
-    auto message = Message::Login(username).send(socket);
-    if (!message.isOk())
-    {
-        message.panic();
-        return -1;
-    }
-    cout << "OK!" << endl;
+    auto message = serverConnection.connect();
+
+    startSynchronization(serverConnection, username);
 
     // Após iniciar uma sessão, o usuário deve ser capaz de arrastar arquivos para o diretório ‘sync_dir’
     // utilizando o gerenciador de arquivos do sistema operacional, e ter esses arquivos sincronizados
@@ -306,7 +474,7 @@ int main(int argc, char *argv[])
 
         if (command.type == CommandType::Upload)
         {
-            uploadCommand(socket, command.parameter);
+            uploadCommand(message.socket, command.parameter);
             continue;
         }
 
@@ -316,21 +484,21 @@ int main(int argc, char *argv[])
 
         if (command.type == CommandType::Download)
         {
-            downloadCommand(socket, command.parameter);
+            downloadCommand(message.socket, command.parameter);
             continue;
         }
 
         // # delete <filename.ext> Exclui o arquivo <filename.ext> de “sync_dir”.
         if (command.type == CommandType::Delete)
         {
-            deleteCommand(socket, command.parameter);
+            deleteCommand(message.socket, command.parameter);
             continue;
         }
 
         // #list_server Lista os arquivos salvos no servidor associados ao usuário.
         if (command.type == CommandType::ListServer)
         {
-            listServerCommand(socket);
+            listServerCommand(message.socket);
             continue;
         }
 
@@ -344,7 +512,6 @@ int main(int argc, char *argv[])
         // # get_sync_dir Cria o diretório “sync_dir” e inicia as atividades de sincronização
         if (command.type == CommandType::GetSyncDir)
         {
-            // TODO
             continue;
         }
 
@@ -352,7 +519,7 @@ int main(int argc, char *argv[])
         if (command.type == CommandType::Exit)
         {
             std::cout << "Fechando conexão com o servidor..." << std::endl;
-            close(socket);
+            close(message.socket);
             std::cout << Color::green << "OK!" << Color::reset << std::endl;
 
             std::cout << "Bye! 🐸" << std::endl;
@@ -366,13 +533,13 @@ int main(int argc, char *argv[])
     while (true)
     {
         cout << "> ";
-        sendCustomPacket(socket);
+        sendCustomPacket(message.socket);
 
-        listenPacket(&buffer, socket);
+        listenPacket(&buffer, message.socket);
         cout << "< " << buffer << endl;
     }
 
-    close(socket);
+    close(message.socket);
     cout << "Connection ended" << endl;
     return 0;
 }

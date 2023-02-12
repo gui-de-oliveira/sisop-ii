@@ -61,6 +61,7 @@
         "queue": "cpp",
         "map": "cpp",
         "iomanip": "cpp",
-        "codecvt": "cpp"
+        "codecvt": "cpp",
+        "filesystem": "cpp"
     }
 }
