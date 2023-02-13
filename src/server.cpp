@@ -63,7 +63,7 @@ void processQueue(Singleton *singleton)
         UserFiles *userFiles = singleton->fileManager->getFiles(username);
 
         std::list<int> subscribers = *(userFiles->subscribers);
-        Callback onComplete = [fileAction, singleton, subscribers]()
+        auto onComplete = [fileAction, singleton, subscribers](FileState nextState = FileState::Empty())
         {
             std::cout << "END: " << fileActionToString(fileAction) << endl;
             singleton->start(fileAction.session);
@@ -72,7 +72,7 @@ void processQueue(Singleton *singleton)
             {
                 for (auto const &subscriber : subscribers)
                 {
-                    Message::RemoteFileDelete(fileAction.filename, fileAction.timestamp).send(subscriber, false);
+                    Message::RemoteFileDelete(fileAction.filename, nextState.updated, nextState.acessed, nextState.created).send(subscriber, false);
                 }
             }
 
@@ -80,7 +80,7 @@ void processQueue(Singleton *singleton)
             {
                 for (auto const &subscriber : subscribers)
                 {
-                    Message::RemoteFileUpdate(fileAction.filename, fileAction.timestamp).send(subscriber, false);
+                    Message::RemoteFileUpdate(fileAction.filename, nextState.updated, nextState.acessed, nextState.created).send(subscriber, false);
                 }
             }
         };
@@ -93,7 +93,13 @@ void processQueue(Singleton *singleton)
             {
                 auto name = item.first;
                 auto state = item.second;
-                fileUpdates.push_front(Message::RemoteFileUpdate(name, state.updated));
+
+                if (state.IsDeletingState() || state.IsEmptyState())
+                {
+                    continue;
+                }
+
+                fileUpdates.push_front(Message::RemoteFileUpdate(name, state.updated, state.acessed, state.created));
             }
 
             userFiles->subscribers->push_front(fileAction.session.socket);
@@ -134,6 +140,13 @@ void processQueue(Singleton *singleton)
             {
                 auto name = item.first;
                 auto state = item.second;
+
+                if (state.tag == FileStateTag::Deleting ||
+                    state.tag == FileStateTag::EmptyFile)
+                {
+                    continue;
+                }
+
                 fileInfos.push_front(Message::FileInfo(name, state.updated, state.acessed, state.created));
             }
 

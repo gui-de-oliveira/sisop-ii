@@ -105,7 +105,7 @@ int main(int argc, char *argv[])
         // # list_client Lista os arquivos salvos no diretório “sync_dir”
         if (command.type == CommandType::ListClient)
         {
-            // TODO
+            manager.queue(FileOperation(FileOperationTag::ListLocalFiles, "---"));
             continue;
         }
 

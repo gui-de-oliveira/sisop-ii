@@ -24,6 +24,7 @@ enum FileOperationTag
     DownloadComplete,
     Fail,
     UploadCompleted,
+    ListLocalFiles,
     LocalUpdate
 };
 
@@ -37,6 +38,10 @@ public:
     std::string fileName;
     time_t timestamp;
     FileAction fileAction;
+
+    time_t atime;
+    time_t ctime;
+    time_t mtime;
 
     FileOperation(FileOperationTag tag, string filename)
     {
@@ -143,6 +148,39 @@ class LocalFileStatesManager : public QueueProcessor<FileOperation>
 
     void processEntry(FileOperation entry)
     {
+        if (entry.tag == FileOperationTag::ListLocalFiles)
+        {
+
+            std::cout
+                << "filename\t"
+                << "mtime\t"
+                << "atime\t"
+                << "ctime"
+                << endl;
+
+            for (auto const &item : fileStatesByFilename)
+            {
+                auto name = item.first;
+                auto state = item.second;
+
+                if (state.tag == FileStateTag::Inexistent)
+                {
+                    continue;
+                }
+
+                std::cout
+                    << name << "\t"
+                    << toString(state.lastModificationTime) << "\t"
+                    << toString(state.lastAccessedTime) << "\t"
+                    << toString(state.creationTime)
+                    << endl;
+            }
+
+            std::cout << "\n\nCommand:" << std::endl;
+
+            return;
+        }
+
         auto currentState = getFileState(entry.fileName);
         auto nextState = nextFileState(entry, currentState);
 
@@ -216,10 +254,15 @@ class ServerSynchronization
                 break;
             }
 
-            FileOperation operation =
+            FileOperation operation(
                 message.type == MessageType::RemoteFileUpdate
-                    ? FileOperation::ServerUpdate(message.filename, message.timestamp)
-                    : FileOperation::ServerDelete(message.filename, message.timestamp);
+                    ? FileOperationTag::ServerUpdate
+                    : FileOperationTag::ServerDelete,
+                message.filename);
+
+            operation.atime = message.atime;
+            operation.ctime = message.ctime;
+            operation.mtime = message.mtime;
 
             localManager->queue(operation);
             message = message.Reply(Message::Response(ResponseType::Ok));

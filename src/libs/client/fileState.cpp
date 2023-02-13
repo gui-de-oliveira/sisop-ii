@@ -193,29 +193,29 @@ FileState LocalFileStatesManager::onServerUpdate(FileOperation entry, FileState 
     if (previousState.tag == FileStateTag::Inexistent)
     {
         nextState.tag = FileStateTag::Downloading;
-        nextState.creationTime = now();
-        nextState.lastAccessedTime = now();
-        nextState.lastModificationTime = now();
+        nextState.creationTime = entry.ctime;
+        nextState.lastAccessedTime = entry.atime;
+        nextState.lastModificationTime = entry.mtime;
         StartDownload(entry.fileName);
         return nextState;
     }
 
     if (previousState.tag == FileStateTag::Ready)
     {
-        if (previousState.lastModificationTime == entry.timestamp)
+        if (previousState.lastModificationTime == entry.mtime)
         {
             return previousState;
         }
 
-        if (previousState.lastModificationTime < entry.timestamp)
+        if (previousState.lastModificationTime < entry.mtime)
         {
             nextState.tag = FileStateTag::Downloading;
-            nextState.lastModificationTime = now();
+            nextState.lastModificationTime = entry.mtime;
             StartDownload(entry.fileName);
             return nextState;
         }
 
-        if (previousState.lastModificationTime > entry.timestamp)
+        if (previousState.lastModificationTime > entry.mtime)
         {
             // OUTDATED VALUE ON SERVER => UPLOAD LOCAL VERSION
             return nextState;

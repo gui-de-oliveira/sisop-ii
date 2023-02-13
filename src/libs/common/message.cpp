@@ -5,18 +5,18 @@
 
 Message::Message()
 {
-    this->timestamp = time(0);
+    this->timestamp = now();
 };
 
 Message::Message(MessageType type)
 {
-    this->timestamp = time(0);
+    this->timestamp = now();
     this->type = type;
 };
 
 Message::Message(MessageType type, std::string filename)
 {
-    this->timestamp = time(0);
+    this->timestamp = now();
     this->type = type;
     this->filename = filename;
 };
@@ -45,19 +45,23 @@ Message Message::FileInfo(std::string filename, time_t mtime, time_t atime, time
     return message;
 }
 
-Message Message::RemoteFileUpdate(std::string filename, time_t timestamp)
+Message Message::RemoteFileUpdate(std::string filename, time_t mtime, time_t atime, time_t ctime)
 {
     Message message(MessageType::RemoteFileUpdate);
     message.filename = filename;
-    message.timestamp = timestamp;
+    message.mtime = mtime;
+    message.atime = atime;
+    message.ctime = ctime;
     return message;
 }
 
-Message Message::RemoteFileDelete(std::string filename, time_t timestamp)
+Message Message::RemoteFileDelete(std::string filename, time_t mtime, time_t atime, time_t ctime)
 {
     Message message(MessageType::RemoteFileDelete);
     message.filename = filename;
-    message.timestamp = timestamp;
+    message.mtime = mtime;
+    message.atime = atime;
+    message.ctime = ctime;
     return message;
 }
 
@@ -123,9 +127,11 @@ Message Message::Parse(char *_buffer)
         int size = format.length();
         int spacer = size + 1;
 
-        time_t timestamp = toTimeT(data.substr(0 * spacer, size));
-        std::string filename = data.substr(1 * spacer);
-        return Message::RemoteFileUpdate(filename, timestamp);
+        time_t mtime = toTimeT(data.substr(0 * spacer, size));
+        time_t atime = toTimeT(data.substr(1 * spacer, size));
+        time_t ctime = toTimeT(data.substr(2 * spacer, size));
+        std::string filename = data.substr(3 * spacer);
+        return Message::RemoteFileUpdate(filename, mtime, atime, ctime);
     }
 
     case MessageType::RemoteFileDelete:
@@ -134,9 +140,11 @@ Message Message::Parse(char *_buffer)
         int size = format.length();
         int spacer = size + 1;
 
-        time_t timestamp = toTimeT(data.substr(0 * spacer, size));
-        std::string filename = data.substr(1 * spacer);
-        return Message::RemoteFileDelete(filename, timestamp);
+        time_t mtime = toTimeT(data.substr(0 * spacer, size));
+        time_t atime = toTimeT(data.substr(1 * spacer, size));
+        time_t ctime = toTimeT(data.substr(2 * spacer, size));
+        std::string filename = data.substr(3 * spacer);
+        return Message::RemoteFileDelete(filename, mtime, atime, ctime);
     }
 
     case MessageType::Start:
@@ -235,11 +243,6 @@ std::string Message::toPacket()
 
     case MessageType::RemoteFileUpdate:
     case MessageType::RemoteFileDelete:
-        packet
-            << toString(this->timestamp) << ":"
-            << this->filename;
-        break;
-
     case MessageType::FileInfo:
         packet
             << toString(this->mtime) << ":"

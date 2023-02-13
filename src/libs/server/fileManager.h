@@ -149,4 +149,4 @@ std::string toString(FileActionType type);
 std::string fileActionToString(FileAction fileAction);
 std::string toString(FileState fileState);
 
-FileState getNextState(FileState lastFileState, FileAction fileAction, Callback onComplete);
+FileState getNextState(FileState lastFileState, FileAction fileAction, std::function<void(FileState)> onComplete);

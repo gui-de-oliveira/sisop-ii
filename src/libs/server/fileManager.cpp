@@ -68,7 +68,7 @@ std::string toString(FileState fileState)
     return "TAG: " + toString(fileState.tag);
 }
 
-FileState uploadCommand(FileState lastFileState, FileAction fileAction, Callback onComplete)
+FileState uploadCommand(FileState lastFileState, FileAction fileAction, std::function<void(FileState)> onComplete)
 {
     FileState nextState;
     nextState.tag = FileStateTag::Updating;
@@ -83,7 +83,7 @@ FileState uploadCommand(FileState lastFileState, FileAction fileAction, Callback
     nextState.executingOperation = allocateFunction();
     *(nextState.executingOperation) = async(
         launch::async,
-        [fileAction, onComplete, lastFileState]
+        [fileAction, onComplete, lastFileState, nextState]
         {
             if (lastFileState.tag != FileStateTag::EmptyFile)
             {
@@ -93,13 +93,13 @@ FileState uploadCommand(FileState lastFileState, FileAction fileAction, Callback
             Message::Response(ResponseType::Ok).send(fileAction.session.socket, false);
             string path = "out/" + fileAction.session.username + "/" + fileAction.filename;
             downloadFile(fileAction.session, path);
-            onComplete();
+            onComplete(nextState);
         });
 
     return nextState;
 }
 
-FileState deleteCommand(FileState lastFileState, FileAction fileAction, Callback onComplete)
+FileState deleteCommand(FileState lastFileState, FileAction fileAction, std::function<void(FileState)> onComplete)
 {
     FileState nextState;
 
@@ -111,12 +111,12 @@ FileState deleteCommand(FileState lastFileState, FileAction fileAction, Callback
     nextState.executingOperation = allocateFunction();
     *(nextState.executingOperation) = async(
         launch::async,
-        [fileAction, onComplete, lastFileState]
+        [fileAction, onComplete, lastFileState, nextState]
         {
             if (lastFileState.tag == FileStateTag::EmptyFile)
             {
                 Message::Response(ResponseType::FileNotFound).send(fileAction.session.socket, false);
-                onComplete();
+                onComplete(nextState);
                 return;
             }
 
@@ -125,20 +125,20 @@ FileState deleteCommand(FileState lastFileState, FileAction fileAction, Callback
             if (lastFileState.tag == FileStateTag::Deleting)
             {
                 Message::Response(ResponseType::FileNotFound).send(fileAction.session.socket, false);
-                onComplete();
+                onComplete(nextState);
                 return;
             }
 
             Message::Response(ResponseType::Ok).send(fileAction.session.socket, false);
             string path = "out/" + fileAction.session.username + "/" + fileAction.filename;
             deleteFile(fileAction.session, path);
-            onComplete();
+            onComplete(nextState);
         });
 
     return nextState;
 }
 
-FileState readCommand(FileState lastFileState, FileAction fileAction, Callback onComplete)
+FileState readCommand(FileState lastFileState, FileAction fileAction, std::function<void(FileState)> onComplete)
 {
     FileState nextState;
 
@@ -151,12 +151,12 @@ FileState readCommand(FileState lastFileState, FileAction fileAction, Callback o
     nextState.executingOperation = allocateFunction();
     *(nextState.executingOperation) = async(
         launch::async,
-        [fileAction, onComplete, lastFileState]
+        [fileAction, onComplete, lastFileState, nextState]
         {
             if (lastFileState.tag == FileStateTag::EmptyFile)
             {
                 Message::Response(ResponseType::FileNotFound).send(fileAction.session.socket, false);
-                onComplete();
+                onComplete(nextState);
                 return;
             }
 
@@ -164,7 +164,7 @@ FileState readCommand(FileState lastFileState, FileAction fileAction, Callback o
             {
                 (lastFileState.executingOperation)->wait();
                 Message::Response(ResponseType::FileNotFound).send(fileAction.session.socket, false);
-                onComplete();
+                onComplete(nextState);
                 return;
             }
 
@@ -186,7 +186,7 @@ FileState readCommand(FileState lastFileState, FileAction fileAction, Callback o
                     (lastFileState.executingOperation)->wait();
                 }
 
-                onComplete();
+                onComplete(nextState);
                 return;
             }
         });
@@ -194,7 +194,7 @@ FileState readCommand(FileState lastFileState, FileAction fileAction, Callback o
     return nextState;
 }
 
-FileState getNextState(FileState lastFileState, FileAction fileAction, Callback onComplete)
+FileState getNextState(FileState lastFileState, FileAction fileAction, std::function<void(FileState)> onComplete)
 {
     FileState nextState;
 

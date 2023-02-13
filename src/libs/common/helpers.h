@@ -8,8 +8,6 @@
 
 using namespace std;
 
-#define Callback std::function<void()>
-
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
