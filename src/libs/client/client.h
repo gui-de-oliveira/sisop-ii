@@ -22,6 +22,7 @@ enum FileOperationTag
     ServerUpdate,
     DownloadComplete,
     FailedDownload,
+    UploadCompleted,
     LocalUpdate
 };
 
@@ -40,6 +41,20 @@ public:
     {
         this->tag = tag;
         this->timestamp = std::time(nullptr);
+    }
+
+    static FileOperation DownloadComplete(std::string fileName)
+    {
+        FileOperation operation(FileOperationTag::DownloadComplete);
+        operation.fileName = fileName;
+        return operation;
+    }
+
+    static FileOperation UploadCompleted(std::string fileName)
+    {
+        FileOperation operation(FileOperationTag::UploadCompleted);
+        operation.fileName = fileName;
+        return operation;
     }
 
     static FileOperation LocalUpdate(std::string fileName, FileAction fileAction)
@@ -65,8 +80,11 @@ enum FileStateTag
 {
     Inexistent,
     Downloading,
+    Uploading,
     Ready
 };
+
+string fileStateTagToString(FileStateTag tag);
 
 class FileState
 {
@@ -77,10 +95,18 @@ class FileState
 
 public:
     FileStateTag tag;
+    time_t lastAccessedTime;
+    time_t lastModificationTime;
+    time_t creationTime;
+
+    time_t endOfDownloadTime;
 
     FileState()
     {
         this->tag = FileStateTag::Inexistent;
+        time_t lastAccessedTime = std::time(nullptr);
+        time_t lastModificationTime = std::time(nullptr);
+        time_t creationTime = std::time(nullptr);
     }
 
     static FileState Inexistent()
@@ -105,14 +131,33 @@ class LocalFileStatesManager : public QueueProcessor<FileOperation>
         return fileStatesByFilename[filename];
     }
 
+    void StartDownload(string filename);
+    void StartUpload(string filename);
+    void Delete(string filename);
+
     FileState nextFileState(FileOperation entry, FileState fileState);
+
     FileState onServerUpdate(FileOperation entry, FileState fileState);
+    FileState onDownloadComplete(FileOperation entry, FileState fileState);
+    FileState onFailedDownload(FileOperation entry, FileState fileState);
+    FileState onLocalUpdate(FileOperation entry, FileState fileState);
+    FileState onLocalDelete(FileOperation entry, FileState fileState);
+    FileState onUploadCompleted(FileOperation entry, FileState fileState);
 
     void processEntry(FileOperation entry)
     {
-        std::cout << "Execution operation: " << toString(entry) << std::endl;
         auto currentState = getFileState(entry.fileName);
         auto nextState = nextFileState(entry, currentState);
+
+        std::cout
+            << Color::blue << fileStateTagToString(currentState.tag) << Color::reset << " "
+            << "[" + toHHMMSS(currentState.lastModificationTime) + "]"
+            << " + " << toString(entry)
+            << " > "
+            << Color::blue << fileStateTagToString(nextState.tag) << Color::reset
+            << "[" + toHHMMSS(nextState.lastModificationTime) + "]"
+            << std::endl;
+
         fileStatesByFilename[entry.fileName] = nextState;
     }
 
@@ -157,7 +202,6 @@ class ServerSynchronization
 
             if (message.type == MessageType::FileUpdate)
             {
-                std::cout << Color::blue << "Update received on file " << message.filename << Color::reset << std::endl;
                 FileOperation operation = FileOperation::ServerUpdate(message.filename, message.timestamp);
                 localManager->queue(operation);
                 message = message.Reply(Message::Response(ResponseType::Ok));

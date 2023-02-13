@@ -50,6 +50,11 @@ std::string toString(time_t value)
     return stream.str();
 }
 
+std::string toHHMMSS(time_t value)
+{
+    return toString(value).substr(11, 8);
+}
+
 std::string extractFilenameFromPath(std::string path)
 {
     bool hasDirectory = path.find("/") != -1;
@@ -69,4 +74,9 @@ bool isFilenameValid(string filename)
         return false;
 
     return true;
+}
+
+time_t now()
+{
+    return std::time(nullptr);
 }

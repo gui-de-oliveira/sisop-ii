@@ -112,3 +112,5 @@ std::string toString(time_t value);
 std::string extractFilenameFromPath(std::string path);
 
 bool isFilenameValid(string filename);
+std::string toHHMMSS(time_t value);
+time_t now();

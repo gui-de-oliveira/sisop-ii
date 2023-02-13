@@ -351,7 +351,7 @@ void sendFile(Session session, string path)
     }
 
     string line;
-    std::cout << "Sending file...";
+    std::cout << "Sending file..." << std::endl;
     while (getline(file, line))
     {
         message = message.Reply(Message::DataMessage(line + "\n"));
