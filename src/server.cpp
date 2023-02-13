@@ -213,6 +213,9 @@ int main(int argc, char *argv[])
 
     int port = atoi(argv[1]);
 
+    std::string serverPath = "out/";
+    mkdir(serverPath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
     int serverSocket = startServer(port);
 
     AsyncRunner runner;
