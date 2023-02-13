@@ -9,7 +9,7 @@ using namespace std;
 
 future<void> *allocateFunction()
 {
-    return (future<void> *)malloc(sizeof(future<void>));
+    return new future<void>;
 }
 
 time_t getAccessTime(std::string path)

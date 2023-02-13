@@ -10,28 +10,40 @@ using namespace std;
 
 #define Callback std::function<void()>
 
+#include <condition_variable>
+#include <iostream>
+#include <mutex>
+#include <queue>
+
 template <typename T>
 class ThreadSafeQueue
 {
-protected:
-    list<T> queued;
+private:
+    std::queue<T> _queue;
+    std::mutex _mutex;
+    std::condition_variable _condition;
 
 public:
-    void queue(T data)
+    void queue(T value)
     {
-        queued.push_back(data);
+        std::unique_lock<std::mutex> lock(_mutex);
+        _queue.push(value);
+        _condition.notify_one();
     }
 
     std::optional<T> pop()
     {
-        if (queued.empty())
+        std::unique_lock<std::mutex> lock(_mutex);
+
+        if (_queue.empty())
         {
             return std::nullopt;
         }
 
-        T data = queued.front();
-        queued.pop_front();
-        return data;
+        T value = _queue.front();
+        _queue.pop();
+
+        return value;
     }
 };
 
