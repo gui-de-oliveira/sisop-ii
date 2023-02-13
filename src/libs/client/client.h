@@ -20,8 +20,9 @@ string fileActionTagToString(FileAction tag);
 enum FileOperationTag
 {
     ServerUpdate,
+    ServerDelete,
     DownloadComplete,
-    FailedDownload,
+    Fail,
     UploadCompleted,
     LocalUpdate
 };
@@ -37,29 +38,16 @@ public:
     time_t timestamp;
     FileAction fileAction;
 
-    FileOperation(FileOperationTag tag)
+    FileOperation(FileOperationTag tag, string filename)
     {
         this->tag = tag;
         this->timestamp = std::time(nullptr);
-    }
-
-    static FileOperation DownloadComplete(std::string fileName)
-    {
-        FileOperation operation(FileOperationTag::DownloadComplete);
-        operation.fileName = fileName;
-        return operation;
-    }
-
-    static FileOperation UploadCompleted(std::string fileName)
-    {
-        FileOperation operation(FileOperationTag::UploadCompleted);
-        operation.fileName = fileName;
-        return operation;
+        this->fileName = filename;
     }
 
     static FileOperation LocalUpdate(std::string fileName, FileAction fileAction)
     {
-        FileOperation operation(FileOperationTag::LocalUpdate);
+        FileOperation operation(FileOperationTag::LocalUpdate, fileName);
         operation.fileName = fileName;
         operation.fileAction = fileAction;
         return operation;
@@ -67,7 +55,15 @@ public:
 
     static FileOperation ServerUpdate(std::string fileName, time_t timestamp)
     {
-        FileOperation operation(FileOperationTag::ServerUpdate);
+        FileOperation operation(FileOperationTag::ServerUpdate, fileName);
+        operation.fileName = fileName;
+        operation.timestamp = timestamp;
+        return operation;
+    }
+
+    static FileOperation ServerDelete(std::string fileName, time_t timestamp)
+    {
+        FileOperation operation(FileOperationTag::ServerDelete, fileName);
         operation.fileName = fileName;
         operation.timestamp = timestamp;
         return operation;
@@ -138,8 +134,9 @@ class LocalFileStatesManager : public QueueProcessor<FileOperation>
     FileState nextFileState(FileOperation entry, FileState fileState);
 
     FileState onServerUpdate(FileOperation entry, FileState fileState);
+    FileState onServerDelete(FileOperation entry, FileState fileState);
     FileState onDownloadComplete(FileOperation entry, FileState fileState);
-    FileState onFailedDownload(FileOperation entry, FileState fileState);
+    FileState onFail(FileOperation entry, FileState fileState);
     FileState onLocalUpdate(FileOperation entry, FileState fileState);
     FileState onLocalDelete(FileOperation entry, FileState fileState);
     FileState onUploadCompleted(FileOperation entry, FileState fileState);
@@ -200,9 +197,17 @@ class ServerSynchronization
                 break;
             }
 
-            if (message.type == MessageType::FileUpdate)
+            if (message.type == MessageType::RemoteFileUpdate)
             {
                 FileOperation operation = FileOperation::ServerUpdate(message.filename, message.timestamp);
+                localManager->queue(operation);
+                message = message.Reply(Message::Response(ResponseType::Ok));
+                continue;
+            }
+
+            if (message.type == MessageType::RemoteFileDelete)
+            {
+                FileOperation operation = FileOperation::ServerDelete(message.filename, message.timestamp);
                 localManager->queue(operation);
                 message = message.Reply(Message::Response(ResponseType::Ok));
                 continue;

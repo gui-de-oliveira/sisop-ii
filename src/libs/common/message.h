@@ -9,7 +9,8 @@ enum MessageType
     InvalidMessage,
     Login,
     UploadCommand,
-    FileUpdate,
+    RemoteFileUpdate,
+    RemoteFileDelete,
     DownloadCommand,
     DeleteCommand,
     EndCommand,
@@ -59,7 +60,8 @@ public:
     static Message ListServerCommand();
     static Message SubscribeUpdates();
     static Message FileInfo(std::string filename, time_t mtime, time_t atime, time_t ctime);
-    static Message FileUpdate(std::string filename, time_t timestamp);
+    static Message RemoteFileUpdate(std::string filename, time_t timestamp);
+    static Message RemoteFileDelete(std::string filename, time_t timestamp);
     static Message Response(ResponseType type);
     static Message Start();
     static Message DataMessage(std::string data);

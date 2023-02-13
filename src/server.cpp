@@ -68,12 +68,19 @@ void processQueue(Singleton *singleton)
             std::cout << "END: " << fileActionToString(fileAction) << endl;
             singleton->start(fileAction.session);
 
-            if (fileAction.type == FileActionType::Delete ||
-                fileAction.type == FileActionType::Upload)
+            if (fileAction.type == FileActionType::Delete)
             {
                 for (auto const &subscriber : subscribers)
                 {
-                    Message::FileUpdate(fileAction.filename, fileAction.timestamp).send(subscriber);
+                    Message::RemoteFileDelete(fileAction.filename, fileAction.timestamp).send(subscriber, false);
+                }
+            }
+
+            if (fileAction.type == FileActionType::Upload)
+            {
+                for (auto const &subscriber : subscribers)
+                {
+                    Message::RemoteFileUpdate(fileAction.filename, fileAction.timestamp).send(subscriber, false);
                 }
             }
         };
@@ -86,7 +93,7 @@ void processQueue(Singleton *singleton)
             {
                 auto name = item.first;
                 auto state = item.second;
-                fileUpdates.push_front(Message::FileUpdate(name, state.updated));
+                fileUpdates.push_front(Message::RemoteFileUpdate(name, state.updated));
             }
 
             userFiles->subscribers->push_front(fileAction.session.socket);

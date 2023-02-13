@@ -22,10 +22,12 @@ string fileOperationTagToString(FileOperationTag tag)
     {
     case FileOperationTag::ServerUpdate:
         return "ServerUpdate";
+    case FileOperationTag::ServerDelete:
+        return "ServerDelete";
     case FileOperationTag::DownloadComplete:
         return "DownloadComplete";
-    case FileOperationTag::FailedDownload:
-        return "FailedDownload";
+    case FileOperationTag::Fail:
+        return "Fail";
     case FileOperationTag::LocalUpdate:
         return "LocalUpdate";
     case FileOperationTag::UploadCompleted:
@@ -80,14 +82,19 @@ FileState LocalFileStatesManager::nextFileState(FileOperation entry, FileState f
         return onServerUpdate(entry, fileState);
     }
 
+    if (entry.tag == FileOperationTag::ServerDelete)
+    {
+        return onServerDelete(entry, fileState);
+    }
+
     if (entry.tag == FileOperationTag::DownloadComplete)
     {
         return onDownloadComplete(entry, fileState);
     }
 
-    if (entry.tag == FileOperationTag::FailedDownload)
+    if (entry.tag == FileOperationTag::Fail)
     {
-        return onFailedDownload(entry, fileState);
+        return onFail(entry, fileState);
     }
 
     if (entry.tag == FileOperationTag::LocalUpdate)
@@ -115,14 +122,14 @@ void LocalFileStatesManager::StartDownload(string filename)
         if (!message.isOk())
         {
             message.panic();
-            FileOperation operation(FileOperationTag::FailedDownload);
+            FileOperation operation(FileOperationTag::Fail, filename);
             queue(operation);
             return;
         }
 
         downloadFile(Session(0, message.socket, ""), path);
         close(message.socket);
-        FileOperation operation = FileOperation::DownloadComplete(filename);
+        FileOperation operation(FileOperationTag::DownloadComplete, filename);
         queue(operation);
     };
 
@@ -142,14 +149,14 @@ void LocalFileStatesManager::StartUpload(string filename)
         if (!message.isOk())
         {
             message.panic();
-            FileOperation operation(FileOperationTag::FailedDownload);
+            FileOperation operation(FileOperationTag::Fail, filename);
             queue(operation);
             return;
         }
 
         sendFile(Session(0, message.socket, ""), path);
         close(message.socket);
-        FileOperation operation = FileOperation::UploadCompleted(filename);
+        FileOperation operation(FileOperationTag::UploadCompleted, filename);
         queue(operation);
     };
 
@@ -167,7 +174,7 @@ void LocalFileStatesManager::Delete(string filename)
         if (!message.isOk())
         {
             message.panic();
-            FileOperation operation(FileOperationTag::FailedDownload);
+            FileOperation operation(FileOperationTag::Fail, filename);
             queue(operation);
             return;
         }
@@ -229,6 +236,35 @@ FileState LocalFileStatesManager::onServerUpdate(FileOperation entry, FileState 
     return nextState;
 }
 
+FileState LocalFileStatesManager::onServerDelete(FileOperation entry, FileState previousState)
+{
+    FileState nextState = previousState;
+
+    if (previousState.tag == FileStateTag::Inexistent)
+    {
+        return previousState;
+    }
+
+    if (previousState.tag == FileStateTag::Ready)
+    {
+        std::string path = "sync_dir_" + serverConnection.username + "/" + entry.fileName;
+        remove(path.c_str());
+        return FileState::Inexistent();
+    }
+
+    if (previousState.tag == FileStateTag::Uploading)
+    {
+        // queue deletion
+    }
+
+    if (previousState.tag == FileStateTag::Downloading)
+    {
+        // queue deletion
+    }
+
+    return nextState;
+}
+
 FileState LocalFileStatesManager::onDownloadComplete(FileOperation entry, FileState previousState)
 {
     FileState nextState = previousState;
@@ -258,7 +294,7 @@ FileState LocalFileStatesManager::onDownloadComplete(FileOperation entry, FileSt
     return nextState;
 }
 
-FileState LocalFileStatesManager::onFailedDownload(FileOperation entry, FileState previousState)
+FileState LocalFileStatesManager::onFail(FileOperation entry, FileState previousState)
 {
     FileState nextState = previousState;
 
@@ -274,7 +310,7 @@ FileState LocalFileStatesManager::onFailedDownload(FileOperation entry, FileStat
 
     if (previousState.tag == FileStateTag::Uploading)
     {
-        // Invalid combination
+        return FileState::Inexistent();
     }
 
     if (previousState.tag == FileStateTag::Downloading)
@@ -351,6 +387,7 @@ FileState LocalFileStatesManager::onLocalDelete(FileOperation entry, FileState p
 
     if (previousState.tag == FileStateTag::Inexistent)
     {
+        return previousState;
     }
 
     if (previousState.tag == FileStateTag::Ready)
