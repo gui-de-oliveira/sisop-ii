@@ -188,10 +188,10 @@ void listServerCommand(int socket)
         }
 
         std::cout
-            << message.filename << "\t"
-            << toString(message.mtime) << "\t"
-            << toString(message.atime) << "\t"
-            << toString(message.ctime)
+            << Color::blue << message.filename << Color::reset << "\t"
+            << toHHMMSS(message.mtime) << "\t"
+            << toHHMMSS(message.atime) << "\t"
+            << toHHMMSS(message.ctime)
             << endl;
 
         message = message.Reply(Message::Response(ResponseType::Ok));

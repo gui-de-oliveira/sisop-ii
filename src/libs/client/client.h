@@ -169,10 +169,10 @@ class LocalFileStatesManager : public QueueProcessor<FileOperation>
                 }
 
                 std::cout
-                    << name << "\t"
-                    << toString(state.lastModificationTime) << "\t"
-                    << toString(state.lastAccessedTime) << "\t"
-                    << toString(state.creationTime)
+                    << Color::blue << name << Color::reset << "\t"
+                    << toHHMMSS(state.lastModificationTime) << "\t"
+                    << toHHMMSS(state.lastAccessedTime) << "\t"
+                    << toHHMMSS(state.creationTime)
                     << endl;
             }
 
