@@ -146,14 +146,17 @@ class LocalFileStatesManager : public QueueProcessor<FileOperation>
         auto currentState = getFileState(entry.fileName);
         auto nextState = nextFileState(entry, currentState);
 
-        std::cout
-            << Color::blue << fileStateTagToString(currentState.tag) << Color::reset << " "
-            << "[" + toHHMMSS(currentState.lastModificationTime) + "]"
-            << " + " << toString(entry)
-            << " > "
-            << Color::blue << fileStateTagToString(nextState.tag) << Color::reset
-            << "[" + toHHMMSS(nextState.lastModificationTime) + "]"
-            << std::endl;
+        if (LOG_DEBUG_INFORMATION)
+        {
+            std::cout
+                << Color::blue << fileStateTagToString(currentState.tag) << Color::reset << " "
+                << "[" + toHHMMSS(currentState.lastModificationTime) + "]"
+                << " + " << toString(entry)
+                << " > "
+                << Color::blue << fileStateTagToString(nextState.tag) << Color::reset
+                << " [" + toHHMMSS(nextState.lastModificationTime) + "]"
+                << std::endl;
+        }
 
         fileStatesByFilename[entry.fileName] = nextState;
     }
@@ -192,29 +195,34 @@ class ServerSynchronization
 
         while (true)
         {
+            if (LOG_DEBUG_INFORMATION)
+            {
+                std::cout
+                    << Color::yellow << "[" + toString(now()) + "] " << Color::reset
+                    << "MESSAGE RECEIVED ON SUBSCRIBE "
+                    << message.type
+                    << std::endl;
+            }
+
             if (message.type == MessageType::EndCommand)
             {
                 break;
             }
 
-            if (message.type == MessageType::RemoteFileUpdate)
+            if (message.type != MessageType::RemoteFileUpdate &&
+                message.type != MessageType::RemoteFileDelete)
             {
-                FileOperation operation = FileOperation::ServerUpdate(message.filename, message.timestamp);
-                localManager->queue(operation);
-                message = message.Reply(Message::Response(ResponseType::Ok));
-                continue;
+                message.panic();
+                break;
             }
 
-            if (message.type == MessageType::RemoteFileDelete)
-            {
-                FileOperation operation = FileOperation::ServerDelete(message.filename, message.timestamp);
-                localManager->queue(operation);
-                message = message.Reply(Message::Response(ResponseType::Ok));
-                continue;
-            }
+            FileOperation operation =
+                message.type == MessageType::RemoteFileUpdate
+                    ? FileOperation::ServerUpdate(message.filename, message.timestamp)
+                    : FileOperation::ServerDelete(message.filename, message.timestamp);
 
-            message.panic();
-            break;
+            localManager->queue(operation);
+            message = message.Reply(Message::Response(ResponseType::Ok));
         }
 
         std::cout << "Server ended connection with subscribe" << std::endl;

@@ -15,6 +15,8 @@ using namespace std;
 #include <mutex>
 #include <queue>
 
+#define LOG_DEBUG_INFORMATION false
+
 template <typename T>
 class ThreadSafeQueue
 {
