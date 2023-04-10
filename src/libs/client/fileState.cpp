@@ -113,6 +113,7 @@ void LocalFileStatesManager::StartDownload(string filename)
 {
     auto download = [this, filename]
     {
+        std::string temporaryPath = "TEMP_" + serverConnection.username + "_" + filename;
         std::string path = "sync_dir_" + serverConnection.username + "/" + filename;
 
         auto message = serverConnection.connect();
@@ -127,7 +128,7 @@ void LocalFileStatesManager::StartDownload(string filename)
             return;
         }
 
-        downloadFile(Session(0, message.socket, ""), path);
+        downloadFile(Session(0, message.socket, ""), temporaryPath, path);
         close(message.socket);
         FileOperation operation(FileOperationTag::DownloadComplete, filename);
         queue(operation);

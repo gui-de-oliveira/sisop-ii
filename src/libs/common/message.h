@@ -83,7 +83,7 @@ public:
 Message listenMessage(int socket);
 
 void deleteFile(Session session, std::string path);
-void downloadFile(Session session, std::string path);
+void downloadFile(Session session, std::string temporaryPath, std::string finalPath);
 void sendFile(Session session, std::string path);
 
 class ServerConnection

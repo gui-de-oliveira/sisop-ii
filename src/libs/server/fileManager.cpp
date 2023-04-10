@@ -92,7 +92,9 @@ FileState uploadCommand(FileState lastFileState, FileAction fileAction, std::fun
 
             Message::Response(ResponseType::Ok).send(fileAction.session.socket, false);
             string path = "out/" + fileAction.session.username + "/" + fileAction.filename;
-            downloadFile(fileAction.session, path);
+            string temporaryPath = "TEMP_" + fileAction.session.username + "_" + fileAction.filename;
+
+            downloadFile(fileAction.session, temporaryPath, path);
             onComplete(nextState);
         });
 

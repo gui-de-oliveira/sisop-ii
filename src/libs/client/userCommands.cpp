@@ -115,7 +115,7 @@ void downloadCommand(int socket, string filename)
         return;
     }
 
-    downloadFile(Session(0, socket, ""), filename);
+    downloadFile(Session(0, socket, ""), "TEMP_" + filename, filename);
 }
 
 void deleteCommand(int socket, string filename)

@@ -426,10 +426,10 @@ void deleteFile(Session session, string path)
     message.Reply(Message::Response(ResponseType::Ok), false);
 }
 
-void downloadFile(Session session, string path)
+void downloadFile(Session session, string temporaryPath, string finalPath)
 {
     std::fstream file;
-    file.open(path, ios::out);
+    file.open(temporaryPath, ios::out);
 
     Message message = Message::Listen(session.socket);
 
@@ -460,6 +460,7 @@ void downloadFile(Session session, string path)
     }
 
     file.close();
+    rename(temporaryPath.c_str(), finalPath.c_str());
 }
 
 void sendFile(Session session, string path)
