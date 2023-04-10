@@ -31,6 +31,8 @@ std::string toString(FileActionType type)
         return Color::green + "LIST_SERVER" + Color::reset;
     case FileActionType::Subscribe:
         return Color::green + "SUBSCRIBE" + Color::reset;
+    case FileActionType::Unsubscribe:
+        return Color::green + "UNSUBSCRIBE" + Color::reset;
     }
 
     throw new std::exception;
@@ -43,6 +45,8 @@ std::string fileActionToString(FileAction fileAction)
            " FROM " +
            Color::yellow +
            fileAction.session.username +
+           " " +
+           std::to_string(fileAction.session.socket).c_str() +
            Color::reset;
 }
 

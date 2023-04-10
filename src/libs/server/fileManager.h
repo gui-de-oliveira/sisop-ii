@@ -12,7 +12,8 @@ enum FileActionType
     Subscribe,
     Read,
     Delete,
-    ListServer
+    ListServer,
+    Unsubscribe
 };
 
 class FileAction

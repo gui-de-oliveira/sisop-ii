@@ -80,10 +80,23 @@ void processQueue(Singleton *singleton)
             {
                 for (auto const &subscriber : subscribers)
                 {
-                    Message::RemoteFileUpdate(fileAction.filename, nextState.updated, nextState.acessed, nextState.created).send(subscriber, false);
+                    Message response = Message::RemoteFileUpdate(fileAction.filename, nextState.updated, nextState.acessed, nextState.created).send(subscriber);
+                    if (response.type == MessageType::Empty)
+                    {
+                        Session session = Session(1, subscriber, "");
+                        singleton->fileQueue->queue(FileAction(session, "", FileActionType::Unsubscribe, now()));
+                    }
                 }
             }
         };
+
+        if (fileAction.type == FileActionType::Unsubscribe)
+        {
+            userFiles->subscribers->remove(fileAction.session.socket);
+            close(fileAction.session.socket);
+            std::cout << "Connection with " << fileAction.session.username << " closed (socket: " << fileAction.session.socket << ")" << std::endl;
+            continue;
+        }
 
         if (fileAction.type == FileActionType::Subscribe)
         {
@@ -305,12 +318,10 @@ void expectFileAction(Session session, ThreadSafeQueue<FileAction> *queue)
 
         if (message.type == MessageType::Empty)
         {
+            queue->queue(FileAction(session, "", FileActionType::Unsubscribe, now()));
             break;
         }
 
         message.panic();
     }
-
-    close(session.socket);
-    std::cout << "Connection with " << clientName << " closed" << std::endl;
 }
