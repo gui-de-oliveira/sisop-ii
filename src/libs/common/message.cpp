@@ -3,6 +3,8 @@
 #include "message.h"
 #include "helpers.h"
 
+#define LOG_MESSAGES_SENT true
+
 Message::Message()
 {
     this->timestamp = now();
@@ -194,12 +196,109 @@ Message Message::Parse(char *_buffer)
     throw new std::exception;
 }
 
+std::string toString(MessageType messageType)
+{
+    switch (messageType)
+    {
+    case MessageType::Empty:
+        return "Empty";
+    case MessageType::InvalidMessage:
+        return "InvalidMessage";
+    case MessageType::Login:
+        return "Login";
+    case MessageType::UploadCommand:
+        return "UploadCommand";
+    case MessageType::RemoteFileUpdate:
+        return "RemoteFileUpdate";
+    case MessageType::RemoteFileDelete:
+        return "RemoteFileDelete";
+    case MessageType::DownloadCommand:
+        return "DownloadCommand";
+    case MessageType::DeleteCommand:
+        return "DeleteCommand";
+    case MessageType::EndCommand:
+        return "EndCommand";
+    case MessageType::ListServerCommand:
+        return "ListServerCommand";
+    case MessageType::SubscribeUpdates:
+        return "SubscribeUpdates";
+    case MessageType::FileInfo:
+        return "FileInfo";
+    case MessageType::DataMessage:
+        return "DataMessage";
+    case MessageType::Response:
+        return "Response";
+    case MessageType::Start:
+        return "Start";
+    }
+
+    return "MESSAGE TYPE NOT HANDLED";
+}
+
+std::string toString(ResponseType responseType)
+{
+    switch (responseType)
+    {
+    case ResponseType::Ok:
+        return "OK";
+    case ResponseType::Invalid:
+        return "Invalid";
+    case ResponseType::FileNotFound:
+        return "FileNotFound";
+    }
+
+    return "RESPONSE TYPE NOT HANDLED";
+}
+
+std::string toString(Message *message)
+{
+    if (message->type == MessageType::Response)
+    {
+        return toString(message->type) + " " + toString(message->responseType);
+    };
+
+    return toString(message->type);
+}
+
+enum MessageDirection
+{
+    SEND,
+    RECEIVE
+};
+
+void logMessage(Message *message, MessageDirection direction)
+{
+    if (!LOG_MESSAGES_SENT)
+    {
+        return;
+    }
+
+    std::cout << "[" << toHHMMSS(now()) << "] ";
+
+    if (direction == MessageDirection::SEND)
+    {
+        std::cout << Color::green << "> " << toString(message) << Color::reset << std::endl;
+        return;
+    }
+
+    if (direction == MessageDirection::RECEIVE)
+    {
+        std::cout << Color::blue << "< " << toString(message) << Color::reset << std::endl;
+        return;
+    }
+
+    std::cout << "DIRECTION NOT HANDLED" << std::endl;
+}
+
 Message Message::Listen(int socket)
 {
     char buffer[MAX_BUFFER_SIZE];
     listenPacket(&buffer, socket);
     Message message = Message::Parse(buffer);
     message.socket = socket;
+
+    logMessage(&message, MessageDirection::RECEIVE);
+
     return message;
 }
 
@@ -257,6 +356,8 @@ std::string Message::toPacket()
 
 Message Message::Reply(Message message, bool expectReply)
 {
+    logMessage(&message, MessageDirection::SEND);
+
     sendPacket(this->socket, message.toPacket());
 
     if (!expectReply)
@@ -268,6 +369,8 @@ Message Message::Reply(Message message, bool expectReply)
 
 Message Message::send(int socket, bool expectReply)
 {
+    logMessage(this, MessageDirection::SEND);
+
     this->socket = socket;
     sendPacket(socket, this->toPacket());
 
