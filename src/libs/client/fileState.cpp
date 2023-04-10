@@ -50,6 +50,8 @@ string fileStateTagToString(FileStateTag tag)
         return "DownloadCompleted";
     case FileStateTag::Uploading:
         return "Uploading";
+    case FileStateTag::UploadingCompleted:
+        return "UploadingCompleted";
     case FileStateTag::Ready:
         return "Ready";
 
@@ -108,6 +110,7 @@ FileState LocalFileStatesManager::nextFileState(FileOperation entry, FileState f
     {
         return onUploadCompleted(entry, fileState);
     }
+
     return FileState::Inexistent();
 }
 
@@ -212,9 +215,22 @@ FileState LocalFileStatesManager::onServerUpdate(FileOperation entry, FileState 
         return nextState;
     }
 
+    if (previousState.tag == FileStateTag::UploadingCompleted)
+    {
+        nextState.tag = FileStateTag::Ready;
+        nextState.creationTime = entry.ctime;
+        nextState.lastAccessedTime = entry.atime;
+        nextState.lastModificationTime = entry.mtime;
+        return nextState;
+    }
+
     if (previousState.tag == FileStateTag::Uploading)
     {
-        // TODO
+        nextState.tag = FileStateTag::UploadingCompleted;
+        nextState.creationTime = entry.ctime;
+        nextState.lastAccessedTime = entry.atime;
+        nextState.lastModificationTime = entry.mtime;
+        return nextState;
     }
 
     if (previousState.tag == FileStateTag::Downloading)
@@ -262,6 +278,12 @@ FileState LocalFileStatesManager::onDownloadComplete(FileOperation entry, FileSt
     if (previousState.tag == FileStateTag::Downloading)
     {
         nextState.tag = FileStateTag::DownloadCompleted;
+        return nextState;
+    }
+
+    if (previousState.tag == FileStateTag::DownloadCompleted)
+    {
+        nextState.tag = FileStateTag::Ready;
         return nextState;
     }
 
@@ -315,6 +337,12 @@ FileState LocalFileStatesManager::onLocalUpdate(FileOperation entry, FileState p
         return nextState;
     }
 
+    if (previousState.tag == FileStateTag::Downloading)
+    {
+        nextState.tag = FileStateTag::DownloadCompleted;
+        return nextState;
+    }
+
     if (previousState.tag == FileStateTag::DownloadCompleted)
     {
         nextState.tag = FileStateTag::Ready;
@@ -327,12 +355,6 @@ FileState LocalFileStatesManager::onLocalUpdate(FileOperation entry, FileState p
         nextState.tag = FileStateTag::Uploading;
         StartUpload(entry.fileName);
         return nextState;
-    }
-
-    if (previousState.tag == FileStateTag::Downloading)
-    {
-        // changes made by the download
-        return previousState;
     }
 
     if (previousState.tag == FileStateTag::Uploading)
@@ -390,6 +412,12 @@ FileState LocalFileStatesManager::onUploadCompleted(FileOperation entry, FileSta
     }
 
     if (previousState.tag == FileStateTag::Uploading)
+    {
+        nextState.tag = FileStateTag::UploadingCompleted;
+        return nextState;
+    }
+
+    if (previousState.tag == FileStateTag::UploadingCompleted)
     {
         nextState.tag = FileStateTag::Ready;
         return nextState;

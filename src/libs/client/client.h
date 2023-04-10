@@ -83,6 +83,7 @@ enum FileStateTag
     Downloading,
     DownloadCompleted,
     Uploading,
+    UploadingCompleted,
     Ready
 };
 
