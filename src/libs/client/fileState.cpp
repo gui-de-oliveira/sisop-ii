@@ -46,6 +46,8 @@ string fileStateTagToString(FileStateTag tag)
         return "Inexistent";
     case FileStateTag::Downloading:
         return "Downloading";
+    case FileStateTag::DownloadCompleted:
+        return "DownloadCompleted";
     case FileStateTag::Uploading:
         return "Uploading";
     case FileStateTag::Ready:
@@ -130,6 +132,7 @@ void LocalFileStatesManager::StartDownload(string filename)
 
         downloadFile(Session(0, message.socket, ""), temporaryPath, path);
         close(message.socket);
+
         FileOperation operation(FileOperationTag::DownloadComplete, filename);
         queue(operation);
     };
@@ -203,24 +206,10 @@ FileState LocalFileStatesManager::onServerUpdate(FileOperation entry, FileState 
 
     if (previousState.tag == FileStateTag::Ready)
     {
-        if (previousState.lastModificationTime == entry.mtime)
-        {
-            return previousState;
-        }
-
-        if (previousState.lastModificationTime < entry.mtime)
-        {
-            nextState.tag = FileStateTag::Downloading;
-            nextState.lastModificationTime = entry.mtime;
-            StartDownload(entry.fileName);
-            return nextState;
-        }
-
-        if (previousState.lastModificationTime > entry.mtime)
-        {
-            // OUTDATED VALUE ON SERVER => UPLOAD LOCAL VERSION
-            return nextState;
-        }
+        nextState.tag = FileStateTag::Downloading;
+        nextState.lastModificationTime = entry.mtime;
+        StartDownload(entry.fileName);
+        return nextState;
     }
 
     if (previousState.tag == FileStateTag::Uploading)
@@ -270,29 +259,14 @@ FileState LocalFileStatesManager::onDownloadComplete(FileOperation entry, FileSt
 {
     FileState nextState = previousState;
 
-    if (previousState.tag == FileStateTag::Inexistent)
-    {
-        // Invalid combination
-    }
-
-    if (previousState.tag == FileStateTag::Ready)
-    {
-        // Invalid combination
-    }
-
-    if (previousState.tag == FileStateTag::Uploading)
-    {
-        // Invalid combination
-    }
-
     if (previousState.tag == FileStateTag::Downloading)
     {
-        nextState.tag = FileStateTag::Ready;
-        nextState.endOfDownloadTime = now();
+        nextState.tag = FileStateTag::DownloadCompleted;
         return nextState;
     }
 
-    return nextState;
+    std::cout << "UNHANDLED STATE TRANSITION" << std::endl;
+    return previousState;
 }
 
 FileState LocalFileStatesManager::onFail(FileOperation entry, FileState previousState)
@@ -341,31 +315,18 @@ FileState LocalFileStatesManager::onLocalUpdate(FileOperation entry, FileState p
         return nextState;
     }
 
+    if (previousState.tag == FileStateTag::DownloadCompleted)
+    {
+        nextState.tag = FileStateTag::Ready;
+        return nextState;
+    }
+
     if (previousState.tag == FileStateTag::Ready)
     {
-        if (previousState.lastModificationTime == entry.timestamp)
-        {
-            return previousState;
-        }
-
-        if (previousState.endOfDownloadTime + 3 > entry.timestamp)
-        {
-            // change made by the download, ignore
-            return previousState;
-        }
-
-        if (previousState.lastModificationTime < entry.timestamp)
-        {
-            nextState.lastModificationTime = now();
-            nextState.tag = FileStateTag::Uploading;
-            StartUpload(entry.fileName);
-            return nextState;
-        }
-
-        if (previousState.lastModificationTime > entry.timestamp)
-        {
-            return previousState;
-        }
+        nextState.lastModificationTime = now();
+        nextState.tag = FileStateTag::Uploading;
+        StartUpload(entry.fileName);
+        return nextState;
     }
 
     if (previousState.tag == FileStateTag::Downloading)

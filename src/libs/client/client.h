@@ -81,6 +81,7 @@ enum FileStateTag
 {
     Inexistent,
     Downloading,
+    DownloadCompleted,
     Uploading,
     Ready
 };
@@ -99,8 +100,6 @@ public:
     time_t lastAccessedTime;
     time_t lastModificationTime;
     time_t creationTime;
-
-    time_t endOfDownloadTime;
 
     FileState()
     {
