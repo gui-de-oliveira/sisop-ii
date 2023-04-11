@@ -3,7 +3,7 @@
 #include "message.h"
 #include "helpers.h"
 
-#define LOG_MESSAGES_SENT true
+#define LOG_MESSAGES_SENT false
 
 Message::Message()
 {
