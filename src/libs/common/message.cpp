@@ -477,11 +477,32 @@ void sendFile(Session session, string path)
         return;
     }
 
+    char ch;
     string line;
     std::cout << "Sending file..." << std::endl;
-    while (getline(file, line))
+
+    while (file >> noskipws >> ch)
     {
-        message = message.Reply(Message::DataMessage(line + "\n"));
+        line.push_back(ch);
+
+        if (line.size() == 100)
+        {
+            message = message.Reply(Message::DataMessage(line));
+
+            if (!message.isOk())
+            {
+                message.panic();
+                file.close();
+                return;
+            }
+
+            line.clear();
+        }
+    }
+
+    if (line.size() > 0)
+    {
+        message = message.Reply(Message::DataMessage(line));
 
         if (!message.isOk())
         {
@@ -489,7 +510,10 @@ void sendFile(Session session, string path)
             file.close();
             return;
         }
+
+        line.clear();
     }
+
     std::cout << "OK!" << std::endl;
 
     message.Reply(Message::EndCommand());
